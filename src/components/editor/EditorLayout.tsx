@@ -93,27 +93,26 @@ export const EditorLayout: React.FC<EditorLayoutProps> = ({ children }) => {
   /**
    * IconBar Button Component
    */
-  const IconButton = ({ 
-    icon, 
-    label, 
-    panelType, 
-    colorClass = 'text-purple-600 dark:text-purple-400' 
-  }: { 
-    icon: React.ReactNode; 
-    label: string; 
+  const IconButton = ({
+    icon,
+    label,
+    panelType,
+    colorClass = 'text-purple-600 dark:text-purple-400'
+  }: {
+    icon: React.ReactNode;
+    label: string;
     panelType: RightPanelType;
     colorClass?: string;
   }) => {
     const isActive = activePanel === panelType;
-    
+
     return (
       <button
         onClick={() => togglePanel(panelType)}
-        className={`flex h-12 w-12 items-center justify-center rounded-lg transition-all ${
-          isActive 
-            ? `${colorClass} bg-purple-100 dark:bg-purple-900` 
-            : 'text-gray-400 dark:text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-700 hover:text-gray-600 dark:hover:text-gray-300'
-        }`}
+        className={`flex h-12 w-12 items-center justify-center rounded-lg transition-all ${isActive
+          ? `${colorClass} bg-purple-100 dark:bg-purple-900`
+          : 'text-gray-400 dark:text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-700 hover:text-gray-600 dark:hover:text-gray-300'
+          }`}
         title={label}
       >
         <span className="text-xl">{icon}</span>
@@ -210,7 +209,7 @@ const handleSave = async (publish: boolean = false) => {
 
         {/* CENTER - Main Editor */}
         <main className="flex-1 overflow-hidden bg-white dark:bg-gray-900">
-          <MainEditor 
+          <MainEditor
             initialContent="<p>Commencez à écrire votre contenu ici...</p>"
             onContentChange={(content) => console.log('Content changed:', content)}
             onEditorReady={(editor) => setEditorInstance(editor)}
@@ -220,10 +219,9 @@ const handleSave = async (publish: boolean = false) => {
         {/* RIGHT SECTION - IconBar + Panel */}
         <div className="flex">
           {/* Panel Area - Slides based on activePanel */}
-          <div 
-            className={`overflow-y-auto border-l border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 transition-all duration-300 ${
-              activePanel ? 'w-72' : 'w-0 overflow-hidden'
-            }`}
+          <div
+            className={`overflow-y-auto border-l border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 transition-all duration-300 ${activePanel ? 'w-72' : 'w-0 overflow-hidden'
+              }`}
           >
             {/* PANEL 1: Structure de cours */}
             {activePanel === 'structure' && (
@@ -308,39 +306,39 @@ const handleSave = async (publish: boolean = false) => {
           {/* Icon Bar - Always visible */}
           <div className="flex w-16 flex-col items-center gap-3 border-l border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 py-6">
             {/* Panel toggle icons */}
-            <IconButton 
-              icon={<FaCloudUploadAlt />} 
-              label="Importer des connaissances" 
+            <IconButton
+              icon={<FaCloudUploadAlt />}
+              label="Importer des connaissances"
               panelType="structure"
               colorClass="text-purple-600 dark:text-purple-400"
             />
-            <IconButton 
-              icon={<FaInfo />} 
-              label="Infos" 
+            <IconButton
+              icon={<FaInfo />}
+              label="Infos"
               panelType="info"
               colorClass="text-blue-600 dark:text-blue-400"
             />
-            <IconButton 
-              icon={<FaComments />} 
-              label="Appréciations" 
+            <IconButton
+              icon={<FaComments />}
+              label="Appréciations"
               panelType="feedback"
               colorClass="text-green-600 dark:text-green-400"
             />
-            <IconButton 
-              icon={<FaFolderOpen />} 
-              label="Mes Cours" 
+            <IconButton
+              icon={<FaFolderOpen />}
+              label="Mes Cours"
               panelType="author"
               colorClass="text-orange-600 dark:text-orange-400"
             />
-            <IconButton 
-              icon={<FaChalkboardTeacher />} 
-              label="Travaux Dirigés" 
+            <IconButton
+              icon={<FaChalkboardTeacher />}
+              label="Travaux Dirigés"
               panelType="worksheet"
               colorClass="text-indigo-600 dark:text-indigo-400"
             />
-            <IconButton 
-              icon={<FaCog />} 
-              label="Propriétés" 
+            <IconButton
+              icon={<FaCog />}
+              label="Propriétés"
               panelType="properties"
               colorClass="text-gray-600 dark:text-gray-400"
             />

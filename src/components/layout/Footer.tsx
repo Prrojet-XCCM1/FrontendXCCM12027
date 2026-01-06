@@ -1,5 +1,6 @@
 // src/components/layout/Footer.tsx
 import Link from 'next/link';
+import Image from 'next/image';
 
 // Icônes
 const PhoneIcon = (props: React.SVGProps<SVGSVGElement>) => (
@@ -21,8 +22,14 @@ const Footer = () => {
           {/* Section 1: Brand & Contact Info */}
           <div className="space-y-6 md:col-span-2 lg:col-span-1 lg:border-r lg:border-gray-700 lg:pr-6 xl:pr-8">
             <Link href="/" className="flex items-center">
-              <div className="w-10 h-10 bg-purple-600 rounded-lg flex items-center justify-center mr-3 shadow-lg">
-                <span className="text-white font-extrabold text-lg">XC</span>
+            <div className="w-8 h-8 lg:w-10 lg:h-10 flex items-center justify-center relative">
+                <Image 
+                  src="/images/Capture.png" 
+                  alt="Logo XCCM" 
+                  width={80} 
+                  height={80} 
+                  className="rounded-full object-cover" 
+                />
               </div>
               <span className="text-2xl font-bold tracking-tight">XCCM1</span>
             </Link>
@@ -53,7 +60,7 @@ const Footer = () => {
             <div>
               <h3 className="text-sm font-semibold text-purple-400 tracking-wider uppercase">Services</h3>
               <ul className="mt-4 space-y-3">
-                <li><Link href="#" className="text-sm text-gray-400 hover:text-white transition-colors">Création de Cours</Link></li>
+                <li><Link href="/editor" className="text-sm text-gray-400 hover:text-white transition-colors">Création de Cours</Link></li>
                 <li><Link href="#" className="text-sm text-gray-400 hover:text-white transition-colors">Espaces Collaboratifs</Link></li>
                 <li><Link href="#" className="text-sm text-gray-400 hover:text-white transition-colors">Bibliothèque de Contenu</Link></li>
                 <li><Link href="#" className="text-sm text-gray-400 hover:text-white transition-colors">Tarification</Link></li>

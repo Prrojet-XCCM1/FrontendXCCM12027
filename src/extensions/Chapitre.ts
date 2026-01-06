@@ -20,7 +20,7 @@ import { ReactNodeViewRenderer } from '@tiptap/react';
 import ChapitreNodeView from './ChapitreNodeView';
 
 export interface ChapitreOptions {
-  HTMLAttributes: Record<string, any>;
+  HTMLAttributes: Record<string, unknown>;
 }
 
 declare module '@tiptap/core' {
@@ -39,9 +39,10 @@ export default Node.create<ChapitreOptions>({
 
   group: 'block',
 
-  content: 'block+',
+  content: '(chapitre|paragraphe|notion|exercice|paragraph)+',
 
   defining: true,
+  draggable:true,
 
   addOptions() {
     return {
@@ -99,14 +100,22 @@ export default Node.create<ChapitreOptions>({
     return ['div', mergeAttributes(HTMLAttributes, { 'data-type': 'chapitre' }), 0];
   },
 
-  addCommands() {
+ addCommands() {
     return {
       setChapitre:
-        () =>
+        (attrs = {}) =>
         ({ commands }) => {
-          // Generate unique ID for this chapitre
-          const id = `chapitre-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-          return commands.wrapIn(this.name, { id });
+          return commands.insertContent({
+            type: this.name,
+            attrs: {
+              id: `chapitre-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+              title: 'Chapitre',
+              ...attrs,
+            },
+            content: [
+              { type: 'paragraph', content: [] }, // ✅ Empty paragraph ensures valid content
+            ],
+          });
         },
     };
   },
