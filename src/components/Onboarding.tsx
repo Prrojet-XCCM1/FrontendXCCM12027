@@ -64,16 +64,21 @@ const Onboarding = () => {
     }), [t]);
 
     let matchedKey = Object.keys(TOUR_STEPS).find(key => rawPathname.endsWith(key)) || rawPathname;
-    let localSteps: Step[] = [];
-    let localStorageKey = '';
+    
+    // Memoizing to prevent infinite rerenders due to new array instances on every render
+    const { localSteps, localStorageKey } = useMemo(() => {
+        let steps: Step[] = [];
+        let key = '';
 
-    if (rawPathname.includes('/profdashboard')) {
-        localSteps = profSteps[currentTab] || profSteps['accueil'];
-        localStorageKey = `hasSeenTour_/profdashboard_${currentTab}`;
-    } else if (TOUR_STEPS[matchedKey]) {
-        localSteps = TOUR_STEPS[matchedKey];
-        localStorageKey = `hasSeenTour_${matchedKey}`;
-    }
+        if (rawPathname.includes('/profdashboard')) {
+            steps = profSteps[currentTab] || profSteps['accueil'];
+            key = `hasSeenTour_/profdashboard_${currentTab}`;
+        } else if (TOUR_STEPS[matchedKey]) {
+            steps = TOUR_STEPS[matchedKey];
+            key = `hasSeenTour_${matchedKey}`;
+        }
+        return { localSteps: steps, localStorageKey: key };
+    }, [rawPathname, currentTab, matchedKey, profSteps, TOUR_STEPS]);
 
     const [isActive, setIsActive] = useState(false);
     const [currentStep, setCurrentStep] = useState(0);
@@ -115,9 +120,9 @@ const Onboarding = () => {
             }
         } else {
             setIsActive(false);
-            setSteps([]);
+            setSteps(prev => prev.length === 0 ? prev : []);
         }
-    }, [rawPathname, currentTab, localStorageKey, localSteps]);
+    }, [localStorageKey, localSteps]);
 
     useEffect(() => {
         updateTargetRect();
