@@ -15,8 +15,14 @@ export const LoadingProvider: React.FC<{ children: React.ReactNode }> = ({ child
     const startLoading = useCallback(() => setIsLoading(true), []);
     const stopLoading = useCallback(() => setIsLoading(false), []);
 
+    const value = React.useMemo(() => ({
+        isLoading,
+        startLoading,
+        stopLoading
+    }), [isLoading, startLoading, stopLoading]);
+
     return (
-        <LoadingContext.Provider value={{ isLoading, startLoading, stopLoading }}>
+        <LoadingContext.Provider value={value}>
             {children}
         </LoadingContext.Provider>
     );

@@ -1,6 +1,6 @@
 // contexts/AuthContext.tsx
 'use client';
-import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import { createContext, useContext, useState, useEffect, useCallback, useMemo, ReactNode } from 'react';
 import { useRouter } from 'next/navigation';
 import { AuthControllerService } from '@/lib';
 import type {
@@ -136,7 +136,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // ==========================================
   // 🔥 Fonction de Login
   // ==========================================
-  const login = async (email: string, password: string): Promise<void> => {
+  const login = useCallback(async (email: string, password: string): Promise<void> => {
     try {
       console.log('🔐 Tentative de connexion:', email);
 
@@ -231,12 +231,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setToken(null);
       throw error;
     }
-  };
+  }, []);
 
   // ==========================================
   // 🔥 Fonction de Logout
   // ==========================================
-  const logout = (): void => {
+  const logout = useCallback((): void => {
     console.log('🚪 Déconnexion');
 
     // Vérifier le rôle avant de nettoyer
@@ -254,12 +254,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // On utilise window.location.href pour forcer un rechargement complet
     // et éviter que les useEffect des dashboards ne redirigent vers /login
     window.location.href = '/';
-  };
+  }, [user]);
 
   // ==========================================
   // 🔥 Register Student
   // ==========================================
-  const registerStudent = async (data: StudentRegisterRequest): Promise<void> => {
+  const registerStudent = useCallback(async (data: StudentRegisterRequest): Promise<void> => {
     try {
       console.log('📝 Inscription étudiant:', data.email);
 
@@ -301,12 +301,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       console.error('❌ Erreur inscription étudiant:', error);
       throw error;
     }
-  };
+  }, []);
 
   // ==========================================
   // 🔥 Register Teacher
   // ==========================================
-  const registerTeacher = async (data: TeacherRegisterRequest): Promise<void> => {
+  const registerTeacher = useCallback(async (data: TeacherRegisterRequest): Promise<void> => {
     try {
       console.log('📝 Inscription enseignant:', data.email);
 
@@ -349,12 +349,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       console.error('❌ Erreur inscription enseignant:', error);
       throw error;
     }
-  };
+  }, []);
 
   // ==========================================
   // 🔥 Register Admin
   // ==========================================
-  const registerAdmin = async (data: any): Promise<void> => {
+  const registerAdmin = useCallback(async (data: any): Promise<void> => {
     try {
       console.log('📝 Inscription admin:', data.email);
 
@@ -411,9 +411,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       console.error('❌ Erreur inscription admin:', error);
       throw error;
     }
-  };
+  }, []);
 
-  const value = {
+  const value = useMemo(() => ({
     user,
     token,
     loading,
@@ -424,7 +424,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     registerStudent,
     registerTeacher,
     registerAdmin,
-  };
+  }), [user, token, loading, login, logout, registerStudent, registerTeacher, registerAdmin]);
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
