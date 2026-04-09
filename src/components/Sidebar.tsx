@@ -7,6 +7,7 @@ import { Home, User, BookOpen, Calendar, Users as LucideUsers, FileText, FolderO
 import { useTranslations } from 'next-intl';
 import LanguageSwitcher from '@/components/LanguageSwitcher';
 import { usePendingCount } from '@/hooks/usePendingCount';
+import { useEmbed } from '@/contexts/EmbedContext';
 
 interface SidebarProps {
   userRole: 'student' | 'professor';
@@ -19,6 +20,7 @@ export default function Sidebar({ userRole, userName, userLevel, activeTab }: Si
   const t = useTranslations('sidebar');
   const [photoUrl, setPhotoUrl] = useState<string>('/images/pp.jpeg');
   const { pendingCount } = usePendingCount();
+  const { isEmbedded } = useEmbed();
 
   useEffect(() => {
     const currentUser = localStorage.getItem('currentUser');
@@ -48,6 +50,8 @@ export default function Sidebar({ userRole, userName, userLevel, activeTab }: Si
     { id: 'exercices', label: t('teacher.exercises'), icon: FileText, href: '/profdashboard?tab=exercices' },
     { id: 'compositions', label: t('teacher.compositions'), icon: BookOpen, href: '/profdashboard?tab=compositions' },
   ];
+  
+  if (isEmbedded) return null;
 
   return (
     <aside className="w-72 bg-gradient-to-b from-purple-100 to-purple-200 dark:from-gray-800 dark:to-gray-900 text-gray-900 dark:text-white min-h-screen p-6 border-r border-purple-200 dark:border-gray-700">

@@ -8,6 +8,7 @@ import { Toaster } from 'react-hot-toast';
 import FlottingCard from '@/components/assistantIa/FlottingCard';
 import { NextIntlClientProvider } from 'next-intl';
 import { getLocale, getMessages } from 'next-intl/server';
+import { EmbedProvider } from '@/contexts/EmbedContext';
 
 export const metadata: Metadata = {
   title: 'XCCM1 - Plateforme de création de contenu pédagogique',
@@ -45,9 +46,11 @@ export default async function RootLayout({
                 <Suspense fallback={null}>
                   <RouteLoading />
                 </Suspense>
-                <AuthProvider>
-                  {children}
-                </AuthProvider>
+                <EmbedProvider>
+		        <AuthProvider>
+		          {children}
+		        </AuthProvider>
+		</EmbedProvider>
                 <FlottingCard />
               </LoadingProvider>
               <Toaster position="top-right" />

@@ -7,11 +7,13 @@ import { useAuth } from '@/contexts/AuthContext';
 import { motion } from 'framer-motion';
 import { useTranslations } from 'next-intl';
 import LanguageSwitcher from '@/components/LanguageSwitcher';
+import { useEmbed } from '@/contexts/EmbedContext';
 
 const AdminSidebar = () => {
     const pathname = usePathname();
     const { logout, user } = useAuth();
     const t = useTranslations('adminSidebar');
+    const { isEmbedded } = useEmbed();
 
     const menuItems = [
         { name: t('overview'), icon: <FaThLarge />, path: '/admindashboard' },
@@ -21,6 +23,8 @@ const AdminSidebar = () => {
         { name: t('enrollments'), icon: <FaUserGraduate />, path: '/admindashboard/enrollments' },
         { name: t('administrators'), icon: <FaUser />, path: '/admindashboard/admins' },
     ];
+    
+    if (isEmbedded) return null;
 
     return (
         <div className="w-64 h-screen bg-white dark:bg-slate-900 border-r border-slate-200 dark:border-slate-800 flex flex-col fixed left-0 top-0 z-50 shadow-xl transition-all duration-300">

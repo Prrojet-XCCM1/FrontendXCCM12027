@@ -12,6 +12,7 @@ import AssignCourseToClassModal from '@/components/professor/AssignCourseToClass
 import TeacherCourseCommentsModal from '@/components/professor/TeacherCourseCommentsModal';
 import { useTeacherDashboard, parseId } from '@/hooks/useTeacherDashboard';
 import { CourseStat } from '@/types/professor';
+import { useEmbed } from '@/contexts/EmbedContext';
 
 interface ClassesViewProps {
   mode?: 'classes' | 'compositions';
@@ -41,6 +42,7 @@ export default function ClassesView({ mode = 'classes' }: ClassesViewProps) {
     handleChangeCourseStatus,
     handleCreateCourseSubmit
   } = useTeacherDashboard();
+  const { isEmbedded } = useEmbed();
 
   const [isAssignModalOpen, setIsAssignModalOpen] = useState<boolean>(false);
   const [selectedCourseIdForAssignment, setSelectedCourseIdForAssignment] = useState<number | null>(null);

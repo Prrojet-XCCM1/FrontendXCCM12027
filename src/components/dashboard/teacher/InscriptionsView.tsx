@@ -7,6 +7,7 @@ import { useEffect, useState } from 'react';
 import { useTranslations } from 'next-intl';
 
 import { useLoading } from '@/contexts/LoadingContext';
+import { useEmbed } from '@/contexts/EmbedContext';
 
 export default function InscriptionsView() {
     const t = useTranslations('teacherDashboard');
@@ -14,6 +15,7 @@ export default function InscriptionsView() {
     const { isLoading: globalLoading, startLoading, stopLoading } = useLoading();
     const [isMounted, setIsMounted] = useState(false);
     const router = useRouter();
+    const { isEmbedded } = useEmbed();
 
     useEffect(() => {
         setIsMounted(true);
@@ -48,7 +50,7 @@ export default function InscriptionsView() {
                 {/* Header Section */}
                 <div id="inscriptions-header" className="flex flex-col md:flex-row md:items-center justify-between mb-10 gap-6">
                     <div>
-                        <button
+                        {!isEmbedded && (<button
                             onClick={() => router.push('/profdashboard?tab=accueil')}
                             className="flex items-center text-purple-600 dark:text-purple-400 font-medium mb-4 hover:translate-x-[-4px] transition-transform"
                         >
@@ -56,7 +58,7 @@ export default function InscriptionsView() {
                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
                             </svg>
                             {t('inscriptions.backToDashboard')}
-                        </button>
+                        </button>)}
                         <h1 className="text-4xl font-extrabold text-gray-900 dark:text-white tracking-tight">
                             {t('inscriptions.title')}
                         </h1>

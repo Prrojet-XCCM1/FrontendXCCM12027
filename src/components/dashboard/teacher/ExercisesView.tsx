@@ -24,6 +24,7 @@ import {
 import toast from 'react-hot-toast';
 import { Exercise, Submission } from '@/types/exercise';
 import { useLoading } from '@/contexts/LoadingContext';
+import { useEmbed } from '@/contexts/EmbedContext';
 
 // ============ TYPES ============
 
@@ -108,6 +109,7 @@ export default function ExercisesView() {
   const router = useRouter();
   const { user } = useAuth();
   const { isLoading: globalLoading, startLoading, stopLoading } = useLoading();
+  const { isEmbedded } = useEmbed();
 
   // États
   const [courses, setCourses] = useState<CourseData[]>([]);
@@ -419,13 +421,13 @@ export default function ExercisesView() {
       <div className="px-4 sm:px-6 lg:px-8">
         {/* Header */}
         <div id="exercises-header" className="mb-8">
-          <button
+          {!isEmbedded && (<button
             onClick={() => router.push('/profdashboard?tab=accueil')}
             className="flex items-center gap-2 text-purple-600 dark:text-purple-400 hover:text-purple-700 dark:hover:text-purple-300 mb-6"
           >
             <ArrowLeft size={20} />
             {t('exercises.backToDashboard')}
-          </button>
+          </button>)}
 
           <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
             <div>
@@ -541,13 +543,13 @@ export default function ExercisesView() {
                   {searchTerm ? t('exercises.noResults') : t('exercises.noExercises')}
                 </p>
                 {!searchTerm && exercises.length === 0 && (
-                  <button
+                  {!isEmbedded && (<button
                     onClick={() => router.push('/profdashboard/courses/create')}
                     className="mt-4 px-4 py-2 rounded-lg bg-purple-600 text-white hover:bg-purple-700 transition-colors flex items-center gap-2 mx-auto"
                   >
                     <PlusCircle className="w-4 h-4" />
                     {t('exercises.createCourseAction')}
-                  </button>
+                  </button>)}
                 )}
               </div>
             ) : (
@@ -675,7 +677,7 @@ export default function ExercisesView() {
 
                     <div className="ml-4">
                       <div className="flex flex-col gap-2">
-                        <button
+                        {!isEmbedded && (<button
                           onClick={() => handleManageExercise(exercise)}
                           className="px-4 py-2 text-sm rounded-lg bg-purple-600 text-white hover:bg-purple-700 transition-colors flex items-center justify-center gap-2 min-w-[120px]"
                         >
@@ -683,10 +685,10 @@ export default function ExercisesView() {
                           <AlertCircle className="w-4 h-4" />
                           {t('exercises.viewExercises')}
 
-                        </button>
+                        </button>)}
 
                         <div className="flex gap-2">
-                          <button
+                          {!isEmbedded && (<button
                             onClick={() => handleViewSubmissions(exercise)}
                             disabled={exercise.totalSubmissions === 0}
                             className="flex-1 px-3 py-1 text-xs rounded border border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed"
@@ -698,7 +700,7 @@ export default function ExercisesView() {
                             className="flex-1 px-3 py-1 text-xs rounded border border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700"
                           >
                             {t('exercises.editExercise')}
-                          </button>
+                          </button>)}
                         </div>
                       </div>
                     </div>

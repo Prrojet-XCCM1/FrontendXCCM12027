@@ -10,6 +10,7 @@ import ManageClassCoursesModal from '@/components/professor/ManageClassCoursesMo
 import { useTeacherDashboard, parseId } from '@/hooks/useTeacherDashboard';
 import toast from 'react-hot-toast';
 import { X, BookOpen } from 'lucide-react';
+import { useEmbed } from '@/contexts/EmbedContext';
 
 export default function HomeView() {
   const t = useTranslations('teacherDashboard');
@@ -35,6 +36,7 @@ export default function HomeView() {
   } = useTeacherDashboard();
 
   const router = useRouter();
+  const { isEmbedded } = useEmbed();
 
   const handleModalClose = () => setIsModalOpen(false);
 
@@ -170,7 +172,11 @@ export default function HomeView() {
               {compositions.map((course) => (
                 <button
                   key={course.id}
-                  onClick={() => handleCourseSelect(course.id)}
+                  onClick={() => {
+                  	if (!isEmbedded) {
+                  		handleCourseSelect(course.id)
+                  	}
+                  }}
                   className="w-full text-left p-3 rounded-lg border border-purple-200 dark:border-gray-700 hover:bg-purple-50 dark:hover:bg-gray-700 transition-colors flex items-start gap-3"
                 >
                   <BookOpen size={20} className="text-purple-600 dark:text-purple-400 mt-0.5 flex-shrink-0" />
@@ -282,7 +288,7 @@ export default function HomeView() {
                 <ChevronRight size={16} className="text-gray-400 group-hover:translate-x-1 transition-transform" />
               </button>
 
-              <button
+              {!isEmbedded && (<button
                 onClick={() => router.push('/profdashboard?tab=inscriptions')}
                 className="w-full flex items-center justify-between p-3 rounded-lg border border-purple-100 dark:border-gray-700 hover:bg-purple-50 dark:hover:bg-gray-700 transition-all group"
               >
@@ -293,7 +299,7 @@ export default function HomeView() {
                   <span className="text-sm font-medium">{t('home.quickActions.enrollments', { count: pendingInscriptionsCount })}</span>
                 </div>
                 <ChevronRight size={16} className="text-gray-400 group-hover:translate-x-1 transition-transform" />
-              </button>
+              </button>)}
 
               <button
                 id="exercise-actions"

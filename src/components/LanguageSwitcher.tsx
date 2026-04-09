@@ -7,6 +7,7 @@ import { useLocale, useTranslations } from 'next-intl';
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
 import { Check, ChevronDown, Globe } from 'lucide-react';
 import type { AppLocale } from '@/i18n/config';
+import { useEmbed } from '@/contexts/EmbedContext';
 
 const availableLocales: AppLocale[] = ['fr', 'en'];
 
@@ -24,6 +25,7 @@ export default function LanguageSwitcher({
   const locale = useLocale() as AppLocale;
   const t = useTranslations('languageSwitcher');
   const [isPending, startTransition] = useTransition();
+  const { isEmbedded } = useEmbed();
 
   const handleChange = (nextLocale: AppLocale) => {
     if (nextLocale === locale) {

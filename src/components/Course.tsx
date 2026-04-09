@@ -20,6 +20,7 @@ import confetti from 'canvas-confetti';
 import TeacherLink from '@/components/TeacherLink';
 import { useEnrollment } from '@/hooks/useEnrollment';
 import { useTranslations } from 'next-intl';
+import { useEmbed } from '@/contexts/EmbedContext';
 
 interface CourseProps {
   courseData: CourseData;
@@ -43,6 +44,7 @@ const Course: React.FC<CourseProps> = ({ courseData, isLiked, likeCount, toggleL
   const t = useTranslations('pages.course');
   const { user } = useAuth();
   const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const { isEmbedded } = useEmbed();
 
   const [currentStepIndex, setCurrentStepIndex] = useState<number>(0);
   const [isInitialized, setIsInitialized] = useState<boolean>(false);
@@ -377,7 +379,7 @@ const Course: React.FC<CourseProps> = ({ courseData, isLiked, likeCount, toggleL
             <div className="flex items-center gap-4 text-sm text-gray-500">
               <span>{courseData.viewCount} {t('views')}</span>
               <button onClick={handleLike} className="hover:text-red-500">{courseData.likeCount} {t('likes')}</button>
-              <TeacherLink teacherId={String(courseData.author?.id)} teacherName={courseData.author?.name} teacherPhoto={courseData.author?.image} />
+              {!isEmbedded && (<TeacherLink teacherId={String(courseData.author?.id)} teacherName={courseData.author?.name} teacherPhoto={courseData.author?.image} />)}
             </div>
           </div>
 

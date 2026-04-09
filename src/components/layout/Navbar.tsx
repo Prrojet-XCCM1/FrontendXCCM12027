@@ -8,6 +8,7 @@ import { MdHelpOutline, MdDashboard } from 'react-icons/md';
 import { useAuth } from '@/contexts/AuthContext';
 import { useTranslations } from 'next-intl';
 import LanguageSwitcher from '@/components/LanguageSwitcher';
+import { useEmbed } from '@/contexts/EmbedContext';
 
 type StoredUser = {
   firstName?: string;
@@ -52,6 +53,7 @@ const Navbar = () => {
   const router = useRouter();
   const pathname = usePathname();
   const t = useTranslations('navbar');
+  const { isEmbedded } = useEmbed();
 
   useEffect(() => {
 	  // 1. Mark as mounted
@@ -186,6 +188,9 @@ const Navbar = () => {
 	  // to ensure the first HTML sent to the browser is stable.
 	  return <nav className="h-16 bg-white dark:bg-gray-900 shadow-xl" />; 
 	}
+	
+  if (isEmbedded) return null;
+	
   return (
     <nav className="fixed top-0 left-0 right-0 z-50 bg-white dark:bg-gray-900 shadow-xl border-b border-gray-100 dark:border-gray-800 transition-colors duration-300">
       <div className="max-w-7xl mx-auto px-3 sm:px-4 lg:px-6">

@@ -7,6 +7,7 @@ import { FaPen, FaSave } from 'react-icons/fa';
 import toast from 'react-hot-toast';
 import { GestionDesUtilisateursService } from '@/lib/services/GestionDesUtilisateursService';
 import { useTranslations } from 'next-intl';
+import { useEmbed } from '@/contexts/EmbedContext';
 
 export interface Professor {
   id: string;
@@ -62,6 +63,7 @@ export default function ProfileCard({ professor, coursesStats, onUpdate }: Profi
   const [editedProfessor, setEditedProfessor] = useState<Professor>(professor);
   const [activeTab, setActiveTab] = useState<'overview' | 'courses'>('overview');
   const defaultAvatar = '/images/prof.jpeg';
+  const { isEmbedded } = useEmbed();
 
   const handleEdit = () => {
     // On garde les valeurs actuelles pour les noms mais on peut vider le reste si souhaité
@@ -718,12 +720,12 @@ export default function ProfileCard({ professor, coursesStats, onUpdate }: Profi
                         </div>
                       )}
 
-                    <button
+                    {!isEmbedded && (<button
                       onClick={() => handleViewCourseDetails(courseItem.courseId)}
                       className="w-full mt-4 px-4 py-2 bg-purple-600 dark:bg-purple-500 text-white text-sm rounded-lg font-semibold hover:bg-purple-700 dark:hover:bg-purple-600 transition-colors"
                     >
                       {t('viewFullDetails')}
-                    </button>
+                    </button>)}
                   </div>
                 </div>
               ))}

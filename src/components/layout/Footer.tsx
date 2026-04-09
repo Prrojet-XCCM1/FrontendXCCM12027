@@ -4,6 +4,7 @@ import Link from 'next/link';
 import Image from 'next/image';
 import NewsletterForm from '@/components/common/NewsletterForm';
 import { useTranslations } from 'next-intl';
+import { useEmbed } from '@/contexts/EmbedContext';
 
 // Icônes (garder les mêmes)
 const PhoneIcon = (props: React.SVGProps<SVGSVGElement>) => (
@@ -18,6 +19,9 @@ const MapPinIcon = (props: React.SVGProps<SVGSVGElement>) => (
 
 const Footer = () => {
   const t = useTranslations('footer');
+  const { isEmbedded } = useEmbed();
+  
+  if (isEmbedded) return null;
 
   return (
     <footer className="bg-gray-900 dark:bg-gray-950 text-white transition-colors duration-300">
