@@ -192,7 +192,7 @@
       "enrollments": "Enrollments",
       "classes": "My classes",
       "exercises": "My exercises",
-      "compositions": "My exams"
+      "compositions": "My courses"
     }
   },
   "adminSidebar": {
@@ -1196,6 +1196,13 @@
       "enroll": "Enroll"
     },
     "course": {
+      "sidebar": {
+        "summary": "SUMMARY",
+        "search": "Search...",
+        "noContent": "No content available",
+        "noSection": "No active section",
+        "download": "Download the course"
+      },
       "by": "By",
       "views": "views",
       "likes": "likes",
@@ -1216,13 +1223,6 @@
       "waitItem1": "Explore other courses available in the library",
       "waitItem2": "Come back later to discover the new content",
       "waitItem3": "Subscribe to be notified of its publication",
-      "sidebar": {
-        "summary": "SUMMARY",
-        "search": "Search...",
-        "noContent": "No content available",
-        "noSection": "No section available",
-        "download": "Download the course"
-      },
       "backToLibrary": "Back to library",
       "unavailableTitle": "Title unavailable",
       "unavailableContent": "Content unavailable",
