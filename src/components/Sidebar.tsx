@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
-import { Home, User, BookOpen, Calendar, Users as LucideUsers, FileText, FolderOpen } from 'lucide-react';
+import { Home, User, BookOpen, Calendar, Users as LucideUsers, FileText, FolderOpen, Bell } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import LanguageSwitcher from '@/components/LanguageSwitcher';
 import { usePendingCount } from '@/hooks/usePendingCount';
@@ -47,6 +47,7 @@ export default function Sidebar({ userRole, userName, userLevel, activeTab }: Si
     { id: 'classes', label: t('teacher.classes'), icon: FolderOpen, href: '/profdashboard?tab=classes' },
     { id: 'exercices', label: t('teacher.exercises'), icon: FileText, href: '/profdashboard?tab=exercices' },
     { id: 'compositions', label: t('teacher.compositions'), icon: BookOpen, href: '/profdashboard?tab=compositions' },
+    { id: 'notifications', label: t('teacher.notifications'), icon: Bell, href: '/profdashboard/notifications' },
   ];
 
   return (

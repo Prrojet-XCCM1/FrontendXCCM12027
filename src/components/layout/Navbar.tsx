@@ -54,24 +54,24 @@ const Navbar = () => {
   const t = useTranslations('navbar');
 
   useEffect(() => {
-	  // 1. Mark as mounted
-	  setIsMounted(true);
+    // 1. Mark as mounted
+    setIsMounted(true);
 
-	  // 2. Load Dark Mode
-	  const savedTheme = localStorage.getItem('theme');
-	  const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-	  const dark = savedTheme === 'dark' || (!savedTheme && prefersDark);
-	  setIsDarkMode(dark);
-	  document.documentElement.classList.toggle('dark', dark);
+    // 2. Load Dark Mode
+    const savedTheme = localStorage.getItem('theme');
+    const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+    const dark = savedTheme === 'dark' || (!savedTheme && prefersDark);
+    setIsDarkMode(dark);
+    document.documentElement.classList.toggle('dark', dark);
 
-	  // 3. Load User Data
-	  const userData = localStorage.getItem('currentUser');
-	  if (userData) setCurrentUser(JSON.parse(userData));
+    // 3. Load User Data
+    const userData = localStorage.getItem('currentUser');
+    if (userData) setCurrentUser(JSON.parse(userData));
 
-	  // 4. Load Role
-	  const role = localStorage.getItem('userRole');
-	  if (role === 'student' || role === 'teacher') setUserRole(role);
-	}, []);
+    // 4. Load Role
+    const role = localStorage.getItem('userRole');
+    if (role === 'student' || role === 'teacher') setUserRole(role);
+  }, []);
 
   // Vérifier si un lien est actif
   const isActiveLink = (href: string) => {
@@ -119,12 +119,12 @@ const Navbar = () => {
       icon: <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 14v3m4-3v3m4-3v3M5 21h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v14a2 2 0 002 2z" /></svg>
     }
   ];
-  
+
   const notebookNavLink = {
-  href: '/notebook',
-  label: t('notebook'),
-  icon: <FaBookOpen className="w-5 h-5" />
-};
+    href: '/notebook',
+    label: t('notebook'),
+    icon: <FaBookOpen className="w-5 h-5" />
+  };
 
 
   // Lien "Éditer" seulement pour les enseignants
@@ -143,37 +143,37 @@ const Navbar = () => {
 
   // Construire les liens de navigation selon le rôle
   const getNavLinks = () => {
-	  const links = [...baseNavLinks];
+    const links = [...baseNavLinks];
 
-	  if (!currentUser) {
-	    // Cas : Utilisateur NON connecté
-	    const biblioIndex = links.findIndex(link => link.href === '/bibliotheque');
-	    if (biblioIndex !== -1) {
-	      links.splice(biblioIndex, 1);
-	    }
-	  } else {
-	    // Cas : Utilisateur CONNECTÉ
-	    
-	    // 1. Ajouter le Notebook ici
-	    links.push(notebookNavLink);
+    if (!currentUser) {
+      // Cas : Utilisateur NON connecté
+      const biblioIndex = links.findIndex(link => link.href === '/bibliotheque');
+      if (biblioIndex !== -1) {
+        links.splice(biblioIndex, 1);
+      }
+    } else {
+      // Cas : Utilisateur CONNECTÉ
 
-	    // 2. Masquer "Accueil" si vous le souhaitez toujours
-	    const homeIndex = links.findIndex(link => link.href === '/');
-	    if (homeIndex !== -1) {
-	      links.splice(homeIndex, 1);
-	    }
-	  }
+      // 1. Ajouter le Notebook ici
+      links.push(notebookNavLink);
 
-	  // Ajouter "Éditer" seulement pour les enseignants
-	  if (userRole === 'teacher') {
-	    links.push(teacherNavLink);
-	  }
+      // 2. Masquer "Accueil" si vous le souhaitez toujours
+      const homeIndex = links.findIndex(link => link.href === '/');
+      if (homeIndex !== -1) {
+        links.splice(homeIndex, 1);
+      }
+    }
 
-	  // Toujours ajouter "Aide"
-	  links.push(helpNavLink);
+    // Ajouter "Éditer" seulement pour les enseignants
+    if (userRole === 'teacher') {
+      links.push(teacherNavLink);
+    }
 
-	  return links;
-	};
+    // Toujours ajouter "Aide"
+    links.push(helpNavLink);
+
+    return links;
+  };
 
   const navLinks = getNavLinks();
 
@@ -181,11 +181,11 @@ const Navbar = () => {
     return null;
   }
 
-   if (!isMounted) {
-	  // Render a simplified version of the navbar or nothing 
-	  // to ensure the first HTML sent to the browser is stable.
-	  return <nav className="h-16 bg-white dark:bg-gray-900 shadow-xl" />; 
-	}
+  if (!isMounted) {
+    // Render a simplified version of the navbar or nothing 
+    // to ensure the first HTML sent to the browser is stable.
+    return <nav className="h-16 bg-white dark:bg-gray-900 shadow-xl" />;
+  }
   return (
     <nav className="fixed top-0 left-0 right-0 z-50 bg-white dark:bg-gray-900 shadow-xl border-b border-gray-100 dark:border-gray-800 transition-colors duration-300">
       <div className="max-w-7xl mx-auto px-3 sm:px-4 lg:px-6">
