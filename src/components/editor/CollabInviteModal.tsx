@@ -27,6 +27,7 @@ import { MdGroup } from 'react-icons/md';
 import { CollabCollaborator } from '@/hooks/useCollabSession';
 import { useCollaboration } from '@/contexts/CollaborationContext';
 import { GestionDesUtilisateursService } from '@/lib/services/GestionDesUtilisateursService';
+import { EnrollmentControllerService } from '@/lib/services/EnrollmentControllerService';
 import toast from 'react-hot-toast';
 
 interface CollabInviteModalProps {
@@ -81,23 +82,36 @@ const CollabInviteModal: React.FC<CollabInviteModalProps> = ({
                 return;
             }
 
-            // Envoi de l'invitation réelle via STOMP
-            if (isConnected && stompClient && courseId) {
-                stompClient.publish({
-                    destination: `/app/projet/${courseId}/invite`,
-                    body: JSON.stringify({
-                        targetUserId: foundTeacher.id,
-                        targetEmail: foundTeacher.email,
-                        senderName: "L'auteur du cours", // On pourrait tirer ça du AuthContext si besoin
-                        courseId: courseId,
-                        timestamp: new Date().toISOString()
-                    })
-                });
-                toast.success(`Invitation envoyée à ${foundTeacher.firstName} ${foundTeacher.lastName}`);
+            // Envoi de l'invitation réelle via l'API (Persistance) et WebSocket (Notification temps réel)
+            if (foundTeacher.email && courseId) {
+                try {
+                    // 1. Appel API pour persister l'invitation en base de données
+                    await EnrollmentControllerService.inviteUser({
+                        email: foundTeacher.email,
+                        courseId: Number(courseId)
+                    });
+
+                    // 2. Notification via WebSocket si connecté
+                    if (isConnected && stompClient) {
+                        stompClient.publish({
+                            destination: `/app/projet/${courseId}/invite`,
+                            body: JSON.stringify({
+                                targetUserId: foundTeacher.id,
+                                targetEmail: foundTeacher.email,
+                                senderName: "L'auteur du cours",
+                                courseId: courseId,
+                                timestamp: new Date().toISOString()
+                            })
+                        });
+                    }
+
+                    toast.success(`Invitation envoyée et enregistrée pour ${foundTeacher.firstName} ${foundTeacher.lastName}`);
+                } catch (apiError) {
+                    console.error("API Error during invitation:", apiError);
+                    toast.error("L'utilisateur est peut-être déjà invité ou a déjà rejoint ce cours.");
+                }
             } else {
-                // Fallback simulation si non connecté
-                await new Promise(resolve => setTimeout(resolve, 600));
-                toast.success(`Simulation : Invitation envoyée à ${foundTeacher.firstName} ${foundTeacher.lastName}`);
+                toast.error("Informations de cours ou utilisateur manquantes pour l'invitation réelle.");
             }
 
             setInviteEmail('');
