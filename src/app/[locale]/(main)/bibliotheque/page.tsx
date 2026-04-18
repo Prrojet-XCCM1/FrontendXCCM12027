@@ -19,13 +19,16 @@ import {
   BookUp,
   Tv,
   Layout,
-  X
+  X,
+  BookOpen
 } from "lucide-react";
 import { transformTiptapToCourseData } from "@/utils/courseTransformer";
 import { toast } from "react-hot-toast";
 import EnrollmentButton from '@/components/EnrollmentButton';
 import confetti from 'canvas-confetti';
 import TeacherLink from '@/components/TeacherLink';
+import { SearchControllerService, User, CourseClass, Exercise, EnrollmentControllerService } from '@/lib';
+import { EnrollmentService } from '@/utils/enrollmentService';
 
 // --- COMPOSANTS AUXILIAIRES ---
 
@@ -98,13 +101,91 @@ const Bibliotheque = () => {
   const locale = useLocale();
   const [currentPage, setCurrentPage] = useState(1);
   const [searchTerm, setSearchTerm] = useState('');
+  const [debouncedSearchTerm, setDebouncedSearchTerm] = useState('');
+  const [searchResults, setSearchResults] = useState<{
+    courses: any[];
+    users: User[];
+    exercises: Exercise[];
+    classes: CourseClass[];
+  }>({ courses: [], users: [], exercises: [], classes: [] });
+  const [isSearching, setIsSearching] = useState(false);
+  const [enrolledCourseIds, setEnrolledCourseIds] = useState<Set<number>>(new Set());
+  const [filterMode, setFilterMode] = useState<'all' | 'favorites'>('all');
+
   const { courses, loading, error, fetchCourse, incrementLike, decrementLike, incrementDownload } = useCourses();
   const { startLoading, stopLoading } = useLoading();
   const { isAuthenticated, loading: authLoading } = useAuth();
   const router = useRouter();
   const [selectedCourseId, setSelectedCourseId] = useState<number | null>(null);
   const [showOrientation, setShowOrientation] = useState(false);
-  const [showFavorites, setShowFavorites] = useState(false);
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearchTerm(searchTerm);
+      setCurrentPage(1);
+    }, 500);
+    return () => clearTimeout(timer);
+  }, [searchTerm]);
+
+  // Récupérer les enrôlements de l'utilisateur
+  useEffect(() => {
+    const fetchEnrollments = async () => {
+      if (isAuthenticated) {
+        try {
+          const enrollments = await EnrollmentService.getMyEnrollments();
+          const ids = new Set(enrollments.map(e => e.courseId).filter((id): id is number => id !== undefined));
+          setEnrolledCourseIds(ids);
+        } catch (err) {
+          console.error("Failed to fetch enrollments:", err);
+        }
+      }
+    };
+    fetchEnrollments();
+  }, [isAuthenticated]);
+
+  useEffect(() => {
+    const performSearch = async () => {
+      // Si pas de recherche, on ne fait rien ici car on utilisera la liste par défaut de useCourses
+      if (!debouncedSearchTerm) {
+        setSearchResults({ courses: [], users: [], exercises: [], classes: [] });
+        return;
+      }
+
+      setIsSearching(true);
+      try {
+        const [usersRes, exercisesRes, classesRes, coursesRes] = await Promise.all([
+          SearchControllerService.searchUsers(debouncedSearchTerm, { page: 0, size: 50 }).catch(err => {
+            console.error("Search users failed:", err);
+            return { content: [] };
+          }),
+          SearchControllerService.searchExercises(debouncedSearchTerm).catch(err => {
+            console.error("Search exercises failed:", err);
+            return [];
+          }),
+          SearchControllerService.searchClasses(debouncedSearchTerm).catch(err => {
+            console.error("Search classes failed:", err);
+            return [];
+          }),
+          SearchControllerService.searchCourses(debouncedSearchTerm).catch(err => {
+            console.error("Search courses failed:", err);
+            return [];
+          })
+        ]);
+        setSearchResults({
+          courses: coursesRes || [],
+          users: (usersRes as any).content || [],
+          exercises: exercisesRes || [],
+          classes: classesRes || []
+        });
+      } catch (err) {
+        console.error("Global search failed:", err);
+      } finally {
+        setIsSearching(false);
+      }
+    };
+
+    performSearch();
+  }, [debouncedSearchTerm]);
   const content = useMemo(() => (
     locale === 'fr'
       ? {
@@ -196,21 +277,50 @@ const Bibliotheque = () => {
   const coursesPerPage = 9;
 
   const filteredCourses = useMemo(() => {
-    if (!courses.length) return [];
+    let result = [...courses];
 
-    let filtered = courses.filter(course =>
-      course.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      (course.category && course.category.toLowerCase().includes(searchTerm.toLowerCase())) ||
-      (course.author?.name && course.author.name.toLowerCase().includes(searchTerm.toLowerCase())) ||
-      (course.description && course.description.toLowerCase().includes(searchTerm.toLowerCase()))
-    );
+    // 1. Gérer la recherche
+    if (debouncedSearchTerm) {
+      // On commence par les résultats du backend (recherche sémantique intelligente)
+      const backendResults = searchResults.courses;
+      
+      // On ajoute un fallback frontend pour les correspondances partielles (substrings)
+      // Cela permet de trouver "triangle" quand on tape "tri" même si ES ne le fait pas
+      const searchLower = debouncedSearchTerm.toLowerCase();
+      const frontendMatches = courses.filter(course => {
+        const titleMatch = course.title?.toLowerCase().includes(searchLower);
+        const descMatch = course.description?.toLowerCase().includes(searchLower);
+        const authorMatch = course.author?.name?.toLowerCase().includes(searchLower);
+        const categoryMatch = course.category?.toLowerCase().includes(searchLower);
+        
+        return titleMatch || descMatch || authorMatch || categoryMatch;
+      });
 
-    if (showFavorites) {
-      filtered = filtered.filter(course => course.isLiked);
+      // Fusionner les résultats en évitant les doublons
+      const combinedResults = [...backendResults];
+      frontendMatches.forEach(feCourse => {
+        if (!combinedResults.some(beCourse => beCourse.id === feCourse.id)) {
+          combinedResults.push(feCourse);
+        }
+      });
+      
+      result = combinedResults;
     }
 
-    return filtered;
-  }, [courses, searchTerm, showFavorites]);
+    // 2. Appliquer le filtre Favoris
+    if (filterMode === 'favorites') {
+      result = result.filter(course => course.isLiked);
+    }
+
+    return result;
+  }, [courses, debouncedSearchTerm, searchResults.courses, filterMode]);
+
+  // Filtrage des exercices par enrôlement (norme de sécurité)
+  const displayedExercises = useMemo(() => {
+    return searchResults.exercises.filter(ex => 
+      ex.course?.id && enrolledCourseIds.has(ex.course.id)
+    );
+  }, [searchResults.exercises, enrolledCourseIds]);
 
   const totalPages = Math.ceil(filteredCourses.length / coursesPerPage);
   const currentCourses = filteredCourses.slice((currentPage - 1) * coursesPerPage, currentPage * coursesPerPage);
@@ -335,9 +445,9 @@ const Bibliotheque = () => {
 
       <div className="container mx-auto px-4 -mt-8 relative z-20">
         <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-xl p-6 mb-8 border border-purple-100 dark:border-purple-900/30">
-          <div className="flex flex-col md:flex-row gap-4">
+          <div className="flex flex-col md:flex-row gap-4 mb-4">
             <div className="relative flex-grow">
-              <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-purple-600 h-6 w-6" />
+              <Search className={`absolute left-4 top-1/2 -translate-y-1/2 text-purple-600 h-6 w-6 ${isSearching ? 'animate-pulse' : ''}`} />
               <input
                 type="text"
                 placeholder={content.searchPlaceholder}
@@ -346,17 +456,32 @@ const Bibliotheque = () => {
                 className="w-full pl-12 pr-6 py-4 border border-purple-100 dark:border-gray-700 rounded-2xl focus:ring-2 focus:ring-purple-500 bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-white transition-all shadow-inner"
               />
             </div>
+          </div>
+
+          <div className="flex items-center gap-3 mt-4 border-t border-purple-50 dark:border-gray-700 pt-4">
             <button
-              onClick={() => setShowFavorites(!showFavorites)}
-              className={`flex items-center justify-center px-6 py-4 rounded-2xl font-medium transition-all ${showFavorites
-                ? 'bg-red-500 text-white hover:bg-red-600'
-                : 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600'
-                }`}
+              onClick={() => setFilterMode('all')}
+              className={`px-6 py-2 rounded-xl font-bold transition-all ${
+                filterMode === 'all'
+                  ? 'bg-purple-600 text-white shadow-lg'
+                  : 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 hover:bg-purple-50 dark:hover:bg-purple-900/20'
+              }`}
             >
-              <Heart className={`w-5 h-5 mr-2 ${showFavorites ? 'fill-current' : ''}`} />
-              {showFavorites ? content.allCourses : content.favorites}
+              {content.allCourses}
+            </button>
+            <button
+              onClick={() => setFilterMode('favorites')}
+              className={`px-6 py-2 rounded-xl font-bold transition-all flex items-center gap-2 ${
+                filterMode === 'favorites'
+                  ? 'bg-red-500 text-white shadow-lg'
+                  : 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 hover:bg-red-50 dark:hover:bg-red-900/10'
+              }`}
+            >
+              <Heart className={`w-4 h-4 ${filterMode === 'favorites' ? 'fill-current' : ''}`} />
+              {content.favorites}
             </button>
           </div>
+
         </div>
       </div>
 
@@ -367,138 +492,199 @@ const Bibliotheque = () => {
           </div>
         )}
 
-        {showFavorites && (
-          <div className="mb-8 flex items-center justify-between bg-gradient-to-r from-red-50 to-pink-50 dark:from-red-900/20 dark:to-pink-900/20 p-4 rounded-2xl border border-red-100 dark:border-red-900/30">
-            <div className="flex items-center">
-              <Heart className="w-5 h-5 text-red-500 mr-3 fill-current" />
-              <span className="text-red-700 dark:text-red-300 font-medium">
-                {content.showingFavorites}
-              </span>
-            </div>
-            <button
-              onClick={() => setShowFavorites(false)}
-              className="text-sm text-red-600 hover:text-red-800 dark:text-red-400 dark:hover:text-red-300"
-            >
-              × {content.clearFilter}
-            </button>
-          </div>
-        )}
 
-        {!loading && filteredCourses.length === 0 && (
-          <div className="flex flex-col items-center justify-center py-24 px-4 text-center bg-white/50 dark:bg-gray-800/50 rounded-3xl border-2 border-dashed border-purple-100 dark:border-purple-900/20 backdrop-blur-sm">
-            <div className="relative mb-8">
-              <div className="absolute inset-0 bg-purple-200 dark:bg-purple-900/30 rounded-full blur-3xl opacity-20 animate-pulse"></div>
-              <div className="relative bg-gradient-to-br from-purple-100 to-white dark:from-gray-800 dark:to-gray-700 w-24 h-24 rounded-full flex items-center justify-center shadow-xl">
-                <Search className="w-12 h-12 text-purple-600 dark:text-purple-400" />
-              </div>
-              <div className="absolute -bottom-2 -right-2 bg-red-100 dark:bg-red-900/30 p-2 rounded-full shadow-lg border-2 border-white dark:border-gray-800">
-                <X className="w-4 h-4 text-red-500" />
-              </div>
-            </div>
-            <h3 className="text-2xl font-black text-gray-900 dark:text-white mb-3">{showFavorites ? content.noFavorites : content.emptyTitle}</h3>
-            <p className="max-w-md text-gray-600 dark:text-gray-400 text-lg leading-relaxed mb-8">
-              {showFavorites
-                ? content.noFavoritesDescription
-                : content.emptyDescription
-              }
-            </p>
-            <button
-              onClick={() => {
-                setSearchTerm('');
-                setShowFavorites(false);
-              }}
-              className="flex items-center gap-2 px-8 py-3 bg-purple-600 hover:bg-purple-700 text-white rounded-xl font-bold transition-all shadow-lg hover:shadow-purple-500/25 active:scale-95"
-            >
-              {content.resetSearch}
-            </button>
-          </div>
-        )}
-
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8 mb-12">
-          {!loading && currentCourses.map((course) => (
-            <div key={course.id} className="bg-white dark:bg-gray-800 rounded-2xl shadow-md hover:shadow-2xl transition-all duration-300 border border-purple-50 dark:border-purple-900/20 flex flex-col overflow-hidden group">
-              <div className="relative h-52 overflow-hidden">
-                <Image
-                  src={course.photoUrl || course.image || '/images/Capture2.png'}
-                  alt={course.title}
-                  fill
-                  className="object-cover group-hover:scale-110 transition-transform duration-500"
-                />
-                <div className="absolute top-3 left-3">
-                  <span className="bg-white/90 dark:bg-gray-900/90 backdrop-blur-sm text-purple-600 text-[10px] font-bold px-3 py-1 rounded-full uppercase shadow-sm">
-                    {course.category || content.categoryFallback}
-                  </span>
+        {!loading && !isSearching && 
+          filteredCourses.length === 0 && 
+          searchResults.users.length === 0 && 
+          displayedExercises.length === 0 && 
+          searchResults.classes.length === 0 && (
+            <div className="flex flex-col items-center justify-center py-24 px-4 text-center bg-white/50 dark:bg-gray-800/50 rounded-3xl border-2 border-dashed border-purple-100 dark:border-purple-900/20 backdrop-blur-sm">
+              <div className="relative mb-8">
+                <div className="absolute inset-0 bg-purple-200 dark:bg-purple-900/30 rounded-full blur-3xl opacity-20 animate-pulse"></div>
+                <div className="relative bg-gradient-to-br from-purple-100 to-white dark:from-gray-800 dark:to-gray-700 w-24 h-24 rounded-full flex items-center justify-center shadow-xl">
+                  <Search className="w-12 h-12 text-purple-600 dark:text-purple-400" />
                 </div>
-                {course.isLiked && (
-                  <div className="absolute top-3 right-3">
-                    <span className="bg-red-500/90 backdrop-blur-sm text-white text-[10px] font-bold px-3 py-1 rounded-full uppercase shadow-sm flex items-center">
-                      <Heart className="w-3 h-3 mr-1 fill-current" />
-                      {content.favoriteBadge}
-                    </span>
-                  </div>
-                )}
+                <div className="absolute -bottom-2 -right-2 bg-red-100 dark:bg-red-900/30 p-2 rounded-full shadow-lg border-2 border-white dark:border-gray-800">
+                  <X className="w-4 h-4 text-red-500" />
+                </div>
               </div>
+              <h3 className="text-2xl font-black text-gray-900 dark:text-white mb-3">{content.emptyTitle}</h3>
+              <p className="max-w-md text-gray-600 dark:text-gray-400 text-lg leading-relaxed mb-8">
+                {content.emptyDescription}
+              </p>
+              <button
+                onClick={() => {
+                  setSearchTerm('');
+                }}
+                className="flex items-center gap-2 px-8 py-3 bg-purple-600 hover:bg-purple-700 text-white rounded-xl font-bold transition-all shadow-lg hover:shadow-purple-500/25 active:scale-95"
+              >
+                {content.resetSearch}
+              </button>
+              {filterMode === 'favorites' && (
+                <button
+                  onClick={() => setFilterMode('all')}
+                  className="mt-4 text-purple-600 font-bold hover:underline"
+                >
+                  {content.clearFilter}
+                </button>
+              )}
+            </div>
+          )}
 
-              <div className="p-5 flex flex-col flex-grow">
-                <Link href={`/courses/${course.id}`}>
-                  <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-2 line-clamp-2 hover:text-purple-600 transition-colors leading-tight">
-                    {course.title}
+        {(searchResults.courses.length > 0 || filteredCourses.length > 0) && (
+          <div className="mb-12">
+            {debouncedSearchTerm && <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-6 flex items-center border-b pb-2"><BookUp className="mr-3 text-purple-600" /> Cours</h2>}
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+              {!loading && currentCourses.map((course) => (
+                <div key={course.id} className="bg-white dark:bg-gray-800 rounded-2xl shadow-md hover:shadow-2xl transition-all duration-300 border border-purple-50 dark:border-purple-900/20 flex flex-col overflow-hidden group">
+                  <div className="relative h-52 overflow-hidden">
+                    <Image
+                      src={course.photoUrl || course.image || '/images/Capture2.png'}
+                      alt={course.title}
+                      fill
+                      className="object-cover group-hover:scale-110 transition-transform duration-500"
+                    />
+                    <div className="absolute top-3 left-3">
+                      <span className="bg-white/90 dark:bg-gray-900/90 backdrop-blur-sm text-purple-600 text-[10px] font-bold px-3 py-1 rounded-full uppercase shadow-sm">
+                        {course.category || content.categoryFallback}
+                      </span>
+                    </div>
+                    {course.isLiked && (
+                      <div className="absolute top-3 right-3">
+                        <span className="bg-red-500/90 backdrop-blur-sm text-white text-[10px] font-bold px-3 py-1 rounded-full uppercase shadow-sm flex items-center">
+                          <Heart className="w-3 h-3 mr-1 fill-current" />
+                          {content.favoriteBadge}
+                        </span>
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="p-5 flex flex-col flex-grow">
+                    <Link href={`/courses/${course.id}`}>
+                      <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-2 line-clamp-2 hover:text-purple-600 transition-colors leading-tight">
+                        {course.title}
+                      </h3>
+                    </Link>
+                    <p className="text-sm text-gray-600 dark:text-gray-400 line-clamp-2 mb-4 flex-grow">
+                      {course.description}
+                    </p>
+                    <div className="mb-4">
+                      <TeacherLink
+                        teacherId={course.author?.id || ''}
+                        teacherName={course.author?.name || content.unknownAuthor}
+                        teacherPhoto={course.author?.image}
+                        showAvatar={true}
+                      />
+                      <div className="mt-1 ml-10">
+                        <StarRating rating={5} />
+                      </div>
+                    </div>
+
+                    <div className="flex justify-between items-center px-1 py-3 border-t border-gray-100 dark:border-gray-700 mb-4">
+                      <div className="flex items-center text-gray-500 text-xs gap-4">
+                        <span className="flex items-center gap-1.5"><Eye className="w-4 h-4" /> {formatNumber(course.viewCount)}</span>
+                        <button
+                          onClick={() => handleToggleLike(course.id)}
+                          className={`flex items-center gap-1.5 transition-colors ${course.isLiked
+                            ? 'text-red-500 hover:text-red-600'
+                            : 'text-gray-500 hover:text-red-500'
+                            }`}
+                        >
+                          {course.isLiked ? (
+                            <Heart className="w-4 h-4 fill-current" strokeWidth={1.5} />
+                          ) : (
+                            <Heart className="w-4 h-4" strokeWidth={1.5} />
+                          )}
+                          {formatNumber(course.likeCount)}
+                        </button>
+                        <span className="flex items-center gap-1.5"><Users className="w-4 h-4" /> {formatNumber(course.followersCount)}</span>
+                        <button
+                          onClick={() => handleDownloadClick(course.id)}
+                          className="flex items-center gap-1.5 hover:text-purple-600 transition-colors"
+                        >
+                          <Download className="w-4 h-4" /> {formatNumber(course.downloadCount)}
+                        </button>
+                      </div>
+                    </div>
+                    <div className="mt-auto">
+                      <EnrollmentButton
+                        courseId={course.id}
+                        courseAuthorId={course.author?.id}
+                        size="md"
+                        variant="primary"
+                        fullWidth
+                      />
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {!isSearching && searchResults.users.length > 0 && (
+          <div className="mb-12">
+            <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-6 flex items-center border-b pb-2"><Users className="mr-3 text-purple-600" /> Utilisateurs</h2>
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
+              {searchResults.users.map((user) => (
+                <div key={user.id} className="bg-white dark:bg-gray-800 rounded-2xl shadow-md p-6 border border-purple-50 dark:border-purple-900/20 flex flex-col items-center text-center hover:shadow-xl transition-all hover:scale-105">
+                  <div className="w-20 h-20 rounded-full overflow-hidden mb-4 border-4 border-purple-100 dark:border-purple-900/50">
+                    <Image src={user.photoUrl || '/images/Capture2.png'} alt={`${user.firstName || ''} ${user.lastName || ''}`.trim() || 'User'} width={80} height={80} className="object-cover w-full h-full" />
+                  </div>
+                  <h3 className="font-bold text-gray-900 dark:text-white text-lg">{`${user.firstName || ''} ${user.lastName || ''}`.trim() || 'Utilisateur'}</h3>
+                  <p className="text-sm text-gray-500 mb-3">{user.email}</p>
+                  <div className="mt-auto">
+                    <span className="px-3 py-1 bg-purple-100 dark:bg-purple-900/30 text-purple-600 dark:text-purple-400 rounded-full text-xs font-bold uppercase">{user.role || 'Étudiant'}</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {!isSearching && displayedExercises.length > 0 && (
+          <div className="mb-12">
+            <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-6 flex items-center border-b pb-2"><BookOpen className="mr-3 text-purple-600" /> Exercices</h2>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              {displayedExercises.map((ex) => (
+                <div key={ex.id} className="bg-white dark:bg-gray-800 rounded-2xl shadow-md p-6 border border-purple-50 dark:border-purple-900/20 hover:border-purple-300 transition-colors">
+                  <h3 className="font-bold text-gray-900 dark:text-white text-lg mb-2 flex items-center gap-2">
+                    <BookOpen className="w-5 h-5 text-purple-500" />
+                    {ex.title}
                   </h3>
-                </Link>
-                <p className="text-sm text-gray-600 dark:text-gray-400 line-clamp-2 mb-4 flex-grow">
-                  {course.description}
-                </p>
-                <div className="mb-4">
-                  <TeacherLink
-                    teacherId={course.author?.id || ''}
-                    teacherName={course.author?.name || content.unknownAuthor}
-                    teacherPhoto={course.author?.image}
-                    showAvatar={true}
-                  />
-                  <div className="mt-1 ml-10">
-                    <StarRating rating={5} />
+                  <p className="text-sm text-gray-600 dark:text-gray-400 mb-1 line-clamp-2">{ex.description}</p>
+                  <p className="text-xs text-purple-600 dark:text-purple-400 mb-4 font-medium italic">Cours: {ex.course?.title}</p>
+                  <div className="flex justify-between items-center text-xs text-gray-500 font-medium">
+                    {ex.maxScore !== undefined && <span>Score: {ex.maxScore}</span>}
+                    {ex.dueDate && <span className="px-2 py-1 bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 rounded">Échéance: {new Date(ex.dueDate).toLocaleDateString()}</span>}
                   </div>
                 </div>
-
-                <div className="flex justify-between items-center px-1 py-3 border-t border-gray-100 dark:border-gray-700 mb-4">
-                  <div className="flex items-center text-gray-500 text-xs gap-4">
-                    <span className="flex items-center gap-1.5"><Eye className="w-4 h-4" /> {formatNumber(course.viewCount)}</span>
-                    <button
-                      onClick={() => handleToggleLike(course.id)}
-                      className={`flex items-center gap-1.5 transition-colors ${course.isLiked
-                        ? 'text-red-500 hover:text-red-600'
-                        : 'text-gray-500 hover:text-red-500'
-                        }`}
-                    >
-                      {course.isLiked ? (
-                        <Heart className="w-4 h-4 fill-current" strokeWidth={1.5} />
-                      ) : (
-                        <Heart className="w-4 h-4" strokeWidth={1.5} />
-                      )}
-                      {formatNumber(course.likeCount)}
-                    </button>
-                    <span className="flex items-center gap-1.5"><Users className="w-4 h-4" /> {formatNumber(course.followersCount)}</span>
-                    <button
-                      onClick={() => handleDownloadClick(course.id)}
-                      className="flex items-center gap-1.5 hover:text-purple-600 transition-colors"
-                    >
-                      <Download className="w-4 h-4" /> {formatNumber(course.downloadCount)}
-                    </button>
-                  </div>
-                </div>
-                <div className="mt-auto">
-                  <EnrollmentButton
-                    courseId={course.id}
-                    courseAuthorId={course.author?.id}
-                    size="md"
-                    variant="primary"
-                    fullWidth
-                  />
-                </div>
-              </div>
+              ))}
             </div>
-          ))}
-        </div>
+          </div>
+        )}
+
+        {!isSearching && searchResults.classes.length > 0 && (
+          <div className="mb-12">
+            <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-6 flex items-center border-b pb-2"><Tv className="mr-3 text-purple-600" /> Classes</h2>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              {searchResults.classes.map((cls) => (
+                <div key={cls.id} className="bg-white dark:bg-gray-800 flex flex-col justify-between rounded-2xl shadow-md p-6 border border-purple-50 dark:border-purple-900/20 hover:shadow-lg transition-shadow">
+                  <div className="mb-4">
+                    <h3 className="font-bold text-gray-900 dark:text-white text-xl mb-1 flex items-center gap-2">
+                      <Users className="w-5 h-5 text-purple-600" />
+                      {cls.name}
+                    </h3>
+                    <p className="text-sm text-gray-500 dark:text-gray-400 line-clamp-2">{cls.description || 'Classe sans description'}</p>
+                  </div>
+                  <button className="w-full py-2 bg-purple-50 dark:bg-purple-900/20 text-purple-600 dark:text-purple-400 rounded-xl font-bold hover:bg-purple-100 dark:hover:bg-purple-900/40 transition-colors">
+                    Rejoindre la classe
+                  </button>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
 
         {!loading && totalPages > 1 && (
           <div className="flex flex-col items-center gap-4 mt-8">

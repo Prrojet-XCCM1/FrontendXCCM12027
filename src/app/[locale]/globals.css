@@ -1,4 +1,6 @@
-@import "tailwindcss";
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
 @import 'katex/dist/katex.min.css';
 
 @custom-variant dark (&:where(.dark, .dark *));
@@ -95,6 +97,7 @@
   * {
     color: black !important;
   }
+}
 
 
   /* ============================================================================
@@ -297,14 +300,18 @@
    
    When dark mode is enabled, these colors will override the light theme.
    Currently not implemented, but structure is ready.
+   */
 
+/* 
 @media (prefers-color-scheme: dark) {
   :root {
-    /* Dark mode overrides would go here */
-  /* --color-background: #111827; */
-  /* --color-surface: #1F2937; */
-  /* etc. */
+    // Dark mode overrides would go here
+    // --color-background: #111827;
+    // --color-surface: #1F2937;
+    // etc.
+  }
 }
+*/
 
 /* ============================================================================
    BASE STYLES - Global Resets & Defaults
