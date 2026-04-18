@@ -133,30 +133,40 @@ const CollabInviteModal: React.FC<CollabInviteModalProps> = ({
                 return;
             }
 
-            // Envoi de l'invitation réelle via l'API (Persistance) et WebSocket (Notification temps réel)
+            // Envoi de l'invitation réelle via l'API (Persistance + Notifications Email/App)
             if (foundTeacher.email && courseId) {
                 try {
-                    // 1. Appel API pour persister l'invitation en base de données
-                    await EnrollmentControllerService.inviteUser({
-                        email: foundTeacher.email,
-                        courseId: Number(courseId)
+                    // 1. Appel au service d'invitation dédié (Déclenche Notifications & Emails côté backend)
+                    await CourseInvitationControllerService.inviteEditor({
+                        courseId: Number(courseId),
+                        emailOrName: foundTeacher.email
                     });
 
-                    // 2. Notification via WebSocket si connecté
+                    // 2. Notification via WebSocket STOMP (Alerte instantanée si l'utilisateur est en ligne)
                     if (isConnected && stompClient) {
-                        stompClient.publish({
-                            destination: `/app/projet/${courseId}/invite`,
-                            body: JSON.stringify({
-                                targetUserId: foundTeacher.id,
-                                targetEmail: foundTeacher.email,
-                                senderName: "L'auteur du cours",
-                                courseId: courseId,
-                                timestamp: new Date().toISOString()
-                            })
-                        });
+                        try {
+                            stompClient.publish({
+                                destination: `/app/projet/${courseId}/invite`,
+                                body: JSON.stringify({
+                                    targetUserId: foundTeacher.id,
+                                    targetEmail: foundTeacher.email,
+                                    senderName: user?.firstName || user?.email || "L'auteur",
+                                    courseId: courseId,
+                                    timestamp: new Date().toISOString()
+                                })
+                            });
+                        } catch (wsError) {
+                            console.warn("Échec broadcast WebSocket invitation:", wsError);
+                        }
                     }
 
-                    toast.success(`Invitation envoyée et enregistrée pour ${foundTeacher.firstName} ${foundTeacher.lastName}`);
+                    toast.success(`Invitation envoyée ! ${foundTeacher.firstName} recevra une notification in-app et un email.`, {
+                        duration: 5000,
+                        icon: '📧'
+                    });
+
+                    setInviteEmail('');
+                    setShowSuggestions(false);
                 } catch (apiError) {
                     console.error("API Error during invitation:", apiError);
                     toast.error("L'utilisateur est peut-être déjà invité ou a déjà rejoint ce cours.");

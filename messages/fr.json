@@ -192,7 +192,8 @@
       "enrollments": "Inscriptions",
       "classes": "Mes classes",
       "exercises": "Mes exercices",
-      "compositions": "Mes compositions"
+      "compositions": "Mes compositions",
+      "notifications": "Notifications"
     }
   },
   "adminSidebar": {
