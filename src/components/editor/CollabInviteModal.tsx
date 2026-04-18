@@ -26,6 +26,7 @@ import {
 import { MdGroup } from 'react-icons/md';
 import { CollabCollaborator } from '@/hooks/useCollabSession';
 import { useCollaboration } from '@/contexts/CollaborationContext';
+import { useAuth } from '@/contexts/AuthContext';
 import { GestionDesUtilisateursService } from '@/lib/services/GestionDesUtilisateursService';
 import { EnrollmentControllerService } from '@/lib/services/EnrollmentControllerService';
 import toast from 'react-hot-toast';
@@ -59,11 +60,61 @@ const CollabInviteModal: React.FC<CollabInviteModalProps> = ({
     const [isInviting, setIsInviting] = useState(false);
 
     const linkInputRef = useRef<HTMLInputElement>(null);
-    const { isConnected, collaborators: stompCollaborators, stompClient } = useCollaboration();
+    const suggestionsRef = useRef<HTMLDivElement>(null);
+    const { isConnected, collaborators: stompCollaborators, stompClient, sendAction } = useCollaboration();
+    const { user } = useAuth();
+
+    const [allTeachers, setAllTeachers] = useState<any[]>([]);
+    const [suggestions, setSuggestions] = useState<any[]>([]);
+    const [showSuggestions, setShowSuggestions] = useState(false);
+
+    // Charger les enseignants au montage
+    useEffect(() => {
+        const loadTeachers = async () => {
+            try {
+                const resp = await GestionDesUtilisateursService.getAllTeachers1();
+                setAllTeachers(resp.data || []);
+            } catch (e) {
+                console.error("Erreur chargement enseignants suggestions:", e);
+            }
+        };
+        loadTeachers();
+    }, []);
+
+    // Filtrer les suggestions selon la saisie
+    useEffect(() => {
+        if (!inviteEmail.trim() || !showSuggestions) {
+            setSuggestions([]);
+            return;
+        }
+        const filtered = allTeachers.filter(t =>
+            t.email !== user?.email && // Exclure soi-même
+            ((t.firstName?.toLowerCase() + ' ' + t.lastName?.toLowerCase()).includes(inviteEmail.toLowerCase()) ||
+                t.email?.toLowerCase().includes(inviteEmail.toLowerCase()))
+        ).slice(0, 5); // Limiter à 5 suggestions
+        setSuggestions(filtered);
+    }, [inviteEmail, allTeachers, showSuggestions]);
+
+    // Fermer les suggestions au clic extérieur
+    useEffect(() => {
+        const handleClickOutside = (event: MouseEvent) => {
+            if (suggestionsRef.current && !suggestionsRef.current.contains(event.target as Node)) {
+                setShowSuggestions(false);
+            }
+        };
+        document.addEventListener('mousedown', handleClickOutside);
+        return () => document.removeEventListener('mousedown', handleClickOutside);
+    }, []);
 
     const handleInviteEmail = async () => {
         const query = inviteEmail.trim().toLowerCase();
         if (!query) return;
+
+        if (query === user?.email?.toLowerCase()) {
+            toast.error("Vous ne pouvez pas vous inviter vous-même.");
+            return;
+        }
+
         setIsInviting(true);
         try {
             // Vérification de l'existence de l'enseignant
@@ -313,27 +364,60 @@ const CollabInviteModal: React.FC<CollabInviteModalProps> = ({
                             </label>
 
                             <div className="flex gap-2">
-                                <div className="relative flex-1">
+                                <div className="relative flex-1" ref={suggestionsRef}>
                                     <input
                                         type="text"
-                                        placeholder="Saisissez un nom d'utilisateur ou email..."
-                                        className="w-full text-sm py-2.5 px-3 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-600 rounded-lg text-gray-700 dark:text-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500/50"
+                                        placeholder="Saisissez un nom ou email..."
+                                        className="w-full text-sm py-2.5 px-3 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-600 rounded-lg text-gray-700 dark:text-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500/50 transition-all font-medium"
                                         value={inviteEmail}
-                                        onChange={(e) => setInviteEmail(e.target.value)}
+                                        onChange={(e) => {
+                                            setInviteEmail(e.target.value);
+                                            setShowSuggestions(true);
+                                        }}
+                                        onFocus={() => setShowSuggestions(true)}
                                         onKeyDown={(e) => {
                                             if (e.key === 'Enter') handleInviteEmail();
                                         }}
                                         disabled={isInviting}
                                     />
+
+                                    {/* Suggestions Dropdown */}
+                                    {showSuggestions && suggestions.length > 0 && (
+                                        <div className="absolute z-[100] w-full mt-1 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl shadow-xl overflow-hidden max-h-60 overflow-y-auto animate-in fade-in slide-in-from-top-2 duration-200">
+                                            {suggestions.map((teacher) => (
+                                                <button
+                                                    key={teacher.id}
+                                                    type="button"
+                                                    onClick={() => {
+                                                        setInviteEmail(teacher.email || '');
+                                                        setShowSuggestions(false);
+                                                    }}
+                                                    className="w-full text-left px-4 py-3 hover:bg-blue-50 dark:hover:bg-blue-900/20 flex items-center gap-3 transition-colors border-b border-gray-50 dark:border-gray-700 last:border-0"
+                                                >
+                                                    <div className="w-8 h-8 rounded-full bg-blue-100 dark:bg-blue-900/40 flex items-center justify-center text-blue-600 dark:text-blue-400 font-bold text-xs uppercase flex-shrink-0">
+                                                        {teacher.firstName?.[0] || teacher.email?.[0]}{teacher.lastName?.[0] || ''}
+                                                    </div>
+                                                    <div className="flex flex-col min-w-0">
+                                                        <span className="text-sm font-semibold truncate text-gray-900 dark:text-white">
+                                                            {teacher.firstName} {teacher.lastName}
+                                                        </span>
+                                                        <span className="text-xs text-gray-500 dark:text-gray-400 truncate">
+                                                            {teacher.email}
+                                                        </span>
+                                                    </div>
+                                                </button>
+                                            ))}
+                                        </div>
+                                    )}
                                 </div>
                                 <button
                                     onClick={handleInviteEmail}
                                     disabled={inviteEmail.trim().length < 2 || isInviting}
-                                    className={`flex items-center gap-1.5 px-4 py-2.5 rounded-lg text-sm font-medium transition-all duration-200 ${inviteEmail.trim().length < 2 || isInviting
-                                        ? 'bg-blue-400/50 dark:bg-blue-900/50 text-white cursor-not-allowed'
-                                        : 'bg-blue-600 hover:bg-blue-700 text-white'
+                                    className={`flex items-center gap-2 px-4 py-2.5 rounded-lg text-sm font-semibold transition-all duration-200 shadow-sm ${inviteEmail.trim().length < 2 || isInviting
+                                        ? 'bg-blue-100 dark:bg-blue-900/30 text-blue-400 dark:text-blue-700 cursor-not-allowed'
+                                        : 'bg-blue-600 hover:bg-blue-700 text-white hover:shadow-blue-500/25 active:scale-95'
                                         }`}
-                                    title="Envoyer l'invitation sur la plateforme XCCM"
+                                    title="Envoyer l'invitation"
                                 >
                                     {isInviting ? <FaSync className="animate-spin text-xs" /> : <FaPaperPlane className="text-xs" />}
                                     <span className="hidden sm:inline">Inviter</span>

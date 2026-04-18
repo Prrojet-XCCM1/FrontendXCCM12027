@@ -14,7 +14,7 @@ interface CollaborationSyncProps {
 }
 
 export default function CollaborationSync({ editorRef, editorInstance }: CollaborationSyncProps) {
-    const { stompClient, isConnected, courseId } = useCollaboration();
+    const { stompClient, isConnected, courseId, sendAction, lastMessage } = useCollaboration();
     const { user } = useAuth();
 
     // Maps Node ID to the Collaborator who locked it
@@ -22,69 +22,58 @@ export default function CollaborationSync({ editorRef, editorInstance }: Collabo
     // Maps User ID to their latest cursor position
     const [remoteCursors, setRemoteCursors] = useState<Map<string, any>>(new Map());
 
-    // Subscribe to updates + locks + cursors
+    // Handle incoming messages from the unified topic
     useEffect(() => {
-        if (!isConnected || !stompClient || !courseId || !editorRef?.current) return;
+        if (!lastMessage) return;
 
-        const subUpdates = stompClient.subscribe(`/topic/projet/${courseId}/updates`, (message) => {
-            try {
-                const update = JSON.parse(message.body);
-                if (update.type === 'MOVE') {
-                    if (editorRef.current) {
-                        editorRef.current.handleTOCAction('move', update.itemId, {
-                            targetId: update.targetId,
-                            position: update.position
-                        });
-                    }
-                }
-            } catch (e) {
-                console.error("Erreur de parsing des updates:", e);
-            }
-        });
+        try {
+            const { type, payload, granuleId } = lastMessage;
 
-        const subLocks = stompClient.subscribe(`/topic/projet/${courseId}/locks`, (message) => {
-            try {
-                const lockData = JSON.parse(message.body);
-                if (lockData.userId === user?.id) return; // Ignore our own locks
-
-                if (lockData.type === 'LOCK') {
-                    setLockedNodes(prev => {
-                        const newMap = new Map(prev);
-                        newMap.set(lockData.nodeId, lockData);
-                        return newMap;
-                    });
-                } else if (lockData.type === 'UNLOCK') {
-                    setLockedNodes(prev => {
-                        const newMap = new Map(prev);
-                        newMap.delete(lockData.nodeId);
-                        return newMap;
-                    });
-                }
-            } catch (e) {
-                console.error("Erreur parsing locks:", e);
-            }
-        });
-
-        const subCursors = stompClient.subscribe(`/topic/projet/${courseId}/cursor`, (message) => {
-            try {
-                const cursorData = JSON.parse(message.body);
-                if (cursorData.userId === user?.id) return; // Ignore our own cursor
-
-                setRemoteCursors(prev => {
+            if (type === 'MOVE' && editorRef.current) {
+                editorRef.current.handleTOCAction('move', payload.itemId, {
+                    targetId: payload.targetId,
+                    position: payload.position
+                });
+            } else if (type === 'LOCK') {
+                if (payload.userId === user?.id) return;
+                setLockedNodes(prev => {
                     const newMap = new Map(prev);
-                    newMap.set(cursorData.userId, cursorData);
+                    newMap.set(payload.nodeId, payload);
                     return newMap;
                 });
-            } catch (e) { }
-        });
+            } else if (type === 'UNLOCK') {
+                if (payload.userId === user?.id) return;
+                setLockedNodes(prev => {
+                    const newMap = new Map(prev);
+                    newMap.delete(payload.nodeId);
+                    return newMap;
+                });
+            } else if (type === 'CURSOR') {
+                if (payload.userId === user?.id) return;
+                setRemoteCursors(prev => {
+                    const newMap = new Map(prev);
+                    newMap.set(payload.userId, payload);
+                    return newMap;
+                });
+            }
+        } catch (e) {
+            console.error("Erreur de traitement du message de collaboration:", e);
+        }
+    }, [lastMessage, editorRef, user?.id]);
+
+    // Handle incoming content updates (still granular for now as per guide content? 
+    // Actually the guide doesn't mention content sync explicitly but we can unify it or keep it if needed.
+    // Let's unify content sync as well using type 'CONTENT' if possible, or keep the specific topic if the backend still separates big binary/JSON blobs.
+    // Given the guide is simple, I'll keep the specialized content topic for performance if it's large, but unify everything else.)
+    useEffect(() => {
+        if (!isConnected || !stompClient || !courseId || !editorInstance) return;
 
         const subContent = stompClient.subscribe(`/topic/projet/${courseId}/content`, (message) => {
             try {
                 const contentData = JSON.parse(message.body);
-                if (contentData.userId === user?.id) return; // Ignore our own updates
+                if (contentData.userId === user?.id) return;
 
                 if (editorInstance && contentData.json) {
-                    // We dispatch the update but tell the editor it's a remote update
                     editorInstance.commands.setContent(contentData.json, false);
                     editorInstance.view.dispatch(editorInstance.state.tr.setMeta('isRemote', true));
                 }
@@ -93,13 +82,8 @@ export default function CollaborationSync({ editorRef, editorInstance }: Collabo
             }
         });
 
-        return () => {
-            subUpdates.unsubscribe();
-            subLocks.unsubscribe();
-            subCursors.unsubscribe();
-            subContent.unsubscribe();
-        };
-    }, [stompClient, isConnected, courseId, editorRef, user?.id, editorInstance]);
+        return () => subContent.unsubscribe();
+    }, [stompClient, isConnected, courseId, editorInstance, user?.id]);
 
     // Track local mouse movements and broadcast
     useEffect(() => {
@@ -110,18 +94,16 @@ export default function CollaborationSync({ editorRef, editorInstance }: Collabo
         const myColor = colors[Math.abs((user?.id || 'a').charCodeAt(0)) % colors.length];
 
         const handleMouseMove = throttle((e: MouseEvent) => {
-            try {
-                stompClient.publish({
-                    destination: `/app/projet/${courseId}/cursor`,
-                    body: JSON.stringify({
-                        userId: user?.id || `anon-${Date.now()}`,
-                        userName: user?.firstName || user?.email?.split('@')[0] || 'Anonyme',
-                        x: e.clientX,
-                        y: e.clientY,
-                        color: myColor
-                    })
-                });
-            } catch (err) { }
+            sendAction({
+                type: 'CURSOR',
+                payload: {
+                    userId: user?.id || `anon-${Date.now()}`,
+                    userName: user?.firstName || user?.email?.split('@')[0] || 'Anonyme',
+                    x: e.clientX,
+                    y: e.clientY,
+                    color: myColor
+                }
+            });
         }, 75); // 75ms throttle
 
         window.addEventListener('mousemove', handleMouseMove);
@@ -183,21 +165,20 @@ export default function CollaborationSync({ editorRef, editorInstance }: Collabo
                 if (timer) clearTimeout(timer);
                 timer = setTimeout(() => {
                     if (lastLockedNodeId) {
-                        stompClient.publish({
-                            destination: `/app/projet/${courseId}/unlock`,
-                            body: JSON.stringify({ type: 'UNLOCK', userId: user?.id, nodeId: lastLockedNodeId })
+                        sendAction({
+                            type: 'UNLOCK',
+                            payload: { userId: user?.id, nodeId: lastLockedNodeId }
                         });
                     }
                     if (currentNodeId) {
-                        stompClient.publish({
-                            destination: `/app/projet/${courseId}/lock`,
-                            body: JSON.stringify({
-                                type: 'LOCK',
+                        sendAction({
+                            type: 'LOCK',
+                            payload: {
                                 userId: user?.id,
                                 nodeId: currentNodeId,
                                 userName: user?.firstName || user?.email || 'Anonyme',
-                                color: '#A855F7' // Purple color indicator for this user
-                            })
+                                color: '#A855F7'
+                            }
                         });
                     }
                     lastLockedNodeId = currentNodeId;
