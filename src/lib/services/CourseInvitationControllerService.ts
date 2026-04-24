@@ -57,4 +57,28 @@ export class CourseInvitationControllerService {
             },
         });
     }
+    /**
+     * @returns any OK
+     * @throws ApiError
+     */
+    public static getInvitations(): CancelablePromise<any> {
+        return __request(OpenAPI, {
+            method: 'GET',
+            url: '/api/invitations',
+        });
+    }
+
+    /**
+     * @param id
+     * @returns ApiResponseVoid OK
+     * @throws ApiError
+     */
+    public static declineInvitation(
+        id: number,
+    ): CancelablePromise<ApiResponseVoid> {
+        return __request(OpenAPI, {
+            method: 'POST',
+            url: `/api/invitations/${id}/decline`,
+        });
+    }
 }

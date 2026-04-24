@@ -14,7 +14,7 @@ export const useSocket = (courseId: number | null) => {
         if (!courseId || !token) return;
 
         // Get API URL, removing trailing slash if exists
-        const baseUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8082';
+        const baseUrl = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8080';
         const cleanBaseUrl = baseUrl.endsWith('/') ? baseUrl.slice(0, -1) : baseUrl;
 
         const client = new Client({

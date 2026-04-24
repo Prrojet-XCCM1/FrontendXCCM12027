@@ -26,6 +26,7 @@ export const viewport = {
 export const dynamic = 'force-dynamic';
 
 import { LoadingProvider } from '@/contexts/LoadingContext';
+import NotificationManager from '@/components/NotificationManager';
 
 export default async function RootLayout({
   children,
@@ -46,6 +47,7 @@ export default async function RootLayout({
                   <RouteLoading />
                 </Suspense>
                 <AuthProvider>
+                  <NotificationManager />
                   {children}
                 </AuthProvider>
                 <FlottingCard />

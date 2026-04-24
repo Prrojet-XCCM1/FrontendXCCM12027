@@ -23,6 +23,8 @@ import {
     FaEnvelope,
     FaPaperPlane,
 } from 'react-icons/fa';
+import { CourseInvitationControllerService } from '@/lib/services/CourseInvitationControllerService';
+import { CourseInvitation } from '@/lib/models/CourseInvitation';
 import { MdGroup } from 'react-icons/md';
 import { CollabCollaborator } from '@/hooks/useCollabSession';
 import { useCollaboration } from '@/contexts/CollaborationContext';
@@ -116,12 +118,10 @@ const CollabInviteModal: React.FC<CollabInviteModalProps> = ({
         }
 
         setIsInviting(true);
-        try {
-            // Vérification de l'existence de l'enseignant
-            const teachersResp = await GestionDesUtilisateursService.getAllTeachers1();
-            const teachers = teachersResp.data || [];
+        console.log("DEBUG: inviteEmail:", query, "courseId:", courseId, "Type courseId:", typeof courseId);
 
-            const foundTeacher = teachers.find(t =>
+        try {
+            const foundTeacher = allTeachers.find(t =>
                 (t.email && t.email.toLowerCase() === query) ||
                 (t.firstName && t.firstName.toLowerCase() === query) ||
                 (t.lastName && t.lastName.toLowerCase() === query) ||
@@ -130,46 +130,44 @@ const CollabInviteModal: React.FC<CollabInviteModalProps> = ({
 
             if (!foundTeacher) {
                 toast.error("Aucun enseignant trouvé sur la plateforme avec ces informations");
+                setIsInviting(false);
                 return;
             }
+
+            console.log("DEBUG: Found Teacher:", foundTeacher.email);
 
             // Envoi de l'invitation réelle via l'API (Persistance + Notifications Email/App)
             if (foundTeacher.email && courseId) {
                 try {
-                    // 1. Appel au service d'invitation dédié (Déclenche Notifications & Emails côté backend)
-                    await CourseInvitationControllerService.inviteEditor({
+                    const payload = {
                         courseId: Number(courseId),
                         emailOrName: foundTeacher.email
-                    });
+                    };
+                    console.log("DEBUG: Calling inviteEditor with payload:", payload);
 
-                    // 2. Notification via WebSocket STOMP (Alerte instantanée si l'utilisateur est en ligne)
-                    if (isConnected && stompClient) {
-                        try {
-                            stompClient.publish({
-                                destination: `/app/projet/${courseId}/invite`,
-                                body: JSON.stringify({
-                                    targetUserId: foundTeacher.id,
-                                    targetEmail: foundTeacher.email,
-                                    senderName: user?.firstName || user?.email || "L'auteur",
-                                    courseId: courseId,
-                                    timestamp: new Date().toISOString()
-                                })
-                            });
-                        } catch (wsError) {
-                            console.warn("Échec broadcast WebSocket invitation:", wsError);
-                        }
-                    }
+                    // 1. Appel au service d'invitation dédié
+                    await CourseInvitationControllerService.inviteEditor(payload);
 
-                    toast.success(`Invitation envoyée ! ${foundTeacher.firstName} recevra une notification in-app et un email.`, {
+                    toast.success(`Invitation envoyée ! ${foundTeacher.firstName || foundTeacher.email} recevra une notification in-app et un email.`, {
                         duration: 5000,
                         icon: '📧'
                     });
 
                     setInviteEmail('');
                     setShowSuggestions(false);
-                } catch (apiError) {
+                } catch (apiError: any) {
                     console.error("API Error during invitation:", apiError);
-                    toast.error("L'utilisateur est peut-être déjà invité ou a déjà rejoint ce cours.");
+
+                    // Récupération plus détaillée de l'erreur
+                    let detailMsg = "";
+                    if (apiError.body && typeof apiError.body === 'object') {
+                        detailMsg = apiError.body.message || apiError.body.error || JSON.stringify(apiError.body);
+                    } else if (apiError.message) {
+                        detailMsg = apiError.message;
+                    }
+
+                    const errorMessage = detailMsg || "L'utilisateur est peut-être déjà invité ou une erreur serveur est survenue.";
+                    toast.error(`Échec de l'invitation : ${errorMessage}`);
                 }
             } else {
                 toast.error("Informations de cours ou utilisateur manquantes pour l'invitation réelle.");

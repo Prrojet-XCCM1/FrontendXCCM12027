@@ -299,7 +299,9 @@ export const request = <T>(config: OpenAPIConfig, options: ApiRequestOptions): C
             const headers = await getHeaders(config, options);
 
             if (!onCancel.isCancelled) {
+                console.log(`📡 [API REQUEST] ${options.method} ${url}`);
                 const response = await sendRequest(config, options, url, body, formData, headers, onCancel);
+                console.log(`📥 [API RESPONSE] ${response.status} ${url}`);
                 const responseBody = await getResponseBody(response);
                 const responseHeader = getResponseHeader(response, options.responseHeader);
 

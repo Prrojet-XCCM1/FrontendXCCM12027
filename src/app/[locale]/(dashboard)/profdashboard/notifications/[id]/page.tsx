@@ -48,8 +48,13 @@ export default function NotificationValidationPage() {
         try {
             // Le token devrait être présent dans l'objet invitation renvoyé par le backend
             await CourseInvitationControllerService.acceptInvitation({ token: invitation.token || id }); // Fallback sur ID au cas où
-            router.push('/profdashboard/notifications');
-            router.refresh();
+
+            if (invitation.course?.id) {
+                router.push(`/editor?courseId=${invitation.course.id}`);
+            } else {
+                router.push('/profdashboard/notifications');
+                router.refresh();
+            }
         } catch (error) {
             console.error("Erreur lors de l'acceptation :", error);
             setErrorMsg("Impossible d'accepter l'invitation.");

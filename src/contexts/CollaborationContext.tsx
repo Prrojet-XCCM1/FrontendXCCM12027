@@ -50,7 +50,7 @@ export const CollaborationProvider = ({
     useEffect(() => {
         if (!isConnected || !stompClient || !courseId) return;
 
-        // Simplified subscription to the project topic as per backend guide
+        // 1. Abonnement au topic du projet (Réception)
         const subscription = stompClient.subscribe(
             `/topic/projet/${courseId}`,
             (message) => {
@@ -58,13 +58,12 @@ export const CollaborationProvider = ({
                     const body: CollaborationMessage = JSON.parse(message.body);
                     setLastMessage(body);
 
-                    // Presence handling logic integrated into the unified topic
+                    // Gestion de la présence via le topic unifié
                     if (body.type === 'JOIN' || body.type === 'LEAVE') {
                         const collab = body.payload as Collaborator;
                         if (!collab || collab.id === user?.id) return;
 
                         if (body.type === 'JOIN') {
-                            toast.success(`${collab.firstName || 'Un collaborateur'} a rejoint la session`, { id: `join-${collab.id}` });
                             setCollaborators(prev => {
                                 if (prev.find(c => c.id === collab.id)) return prev;
                                 return [...prev, collab];
@@ -74,41 +73,46 @@ export const CollaborationProvider = ({
                         }
                     }
                 } catch (e) {
-                    console.error("Erreur de parsing dans le flux de collaboration:", e);
+                    console.error("Erreur de parsing collaboration:", e);
                 }
             }
         );
 
-        // Subscription to personal errors
+        // 2. Abonnement aux erreurs personnelles
         const errorSub = stompClient.subscribe('/user/topic/errors', (error) => {
             try {
                 const errorBody = JSON.parse(error.body);
-                toast.error(`Erreur de collaboration : ${errorBody.content || 'Inconnue'}`);
+                toast.error(`Erreur collaboration : ${errorBody.content || 'Action impossible'}`);
             } catch (e) { }
         });
 
-        // Announce our presence
+        // 3. Annonce de présence (facultatif mais recommandé)
         if (user) {
-            try {
-                stompClient.publish({
-                    destination: `/app/projet/${courseId}/presence/join`,
-                    body: JSON.stringify({
+            stompClient.publish({
+                destination: `/app/projet/${courseId}/action`,
+                body: JSON.stringify({
+                    type: 'JOIN',
+                    senderEmail: user.email,
+                    payload: {
                         id: user.id,
                         email: user.email,
                         firstName: user.firstName,
                         lastName: user.lastName,
-                        status: 'ONLINE',
-                        type: 'JOIN'
-                    })
-                });
-            } catch (e) { }
+                        status: 'ONLINE'
+                    }
+                })
+            });
         }
 
         return () => {
             if (user && isConnected && stompClient.active) {
                 stompClient.publish({
-                    destination: `/app/projet/${courseId}/presence/leave`,
-                    body: JSON.stringify({ id: user.id, type: 'LEAVE', status: 'OFFLINE' })
+                    destination: `/app/projet/${courseId}/action`,
+                    body: JSON.stringify({
+                        type: 'LEAVE',
+                        senderEmail: user.email,
+                        payload: { id: user.id }
+                    })
                 });
             }
             subscription.unsubscribe();
