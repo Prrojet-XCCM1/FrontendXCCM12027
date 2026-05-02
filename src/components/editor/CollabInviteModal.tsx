@@ -69,6 +69,8 @@ const CollabInviteModal: React.FC<CollabInviteModalProps> = ({
     const [allTeachers, setAllTeachers] = useState<any[]>([]);
     const [suggestions, setSuggestions] = useState<any[]>([]);
     const [showSuggestions, setShowSuggestions] = useState(false);
+    // Track the teacher object selected from the autocomplete dropdown
+    const [selectedTeacher, setSelectedTeacher] = useState<any | null>(null);
 
     // Charger les enseignants au montage
     useEffect(() => {
@@ -93,7 +95,7 @@ const CollabInviteModal: React.FC<CollabInviteModalProps> = ({
             t.email !== user?.email && // Exclure soi-même
             ((t.firstName?.toLowerCase() + ' ' + t.lastName?.toLowerCase()).includes(inviteEmail.toLowerCase()) ||
                 t.email?.toLowerCase().includes(inviteEmail.toLowerCase()))
-        ).slice(0, 5); // Limiter à 5 suggestions
+        ).slice(0, 5);
         setSuggestions(filtered);
     }, [inviteEmail, allTeachers, showSuggestions]);
 
@@ -118,10 +120,11 @@ const CollabInviteModal: React.FC<CollabInviteModalProps> = ({
         }
 
         setIsInviting(true);
-        console.log("DEBUG: inviteEmail:", query, "courseId:", courseId, "Type courseId:", typeof courseId);
 
         try {
-            const foundTeacher = allTeachers.find(t =>
+            // Prioritize the teacher selected from autocomplete dropdown,
+            // otherwise fall back to searching by what was typed
+            const foundTeacher = selectedTeacher || allTeachers.find(t =>
                 (t.email && t.email.toLowerCase() === query) ||
                 (t.firstName && t.firstName.toLowerCase() === query) ||
                 (t.lastName && t.lastName.toLowerCase() === query) ||
@@ -154,6 +157,7 @@ const CollabInviteModal: React.FC<CollabInviteModalProps> = ({
                     });
 
                     setInviteEmail('');
+                    setSelectedTeacher(null);
                     setShowSuggestions(false);
                 } catch (apiError: any) {
                     console.error("API Error during invitation:", apiError);
@@ -380,6 +384,7 @@ const CollabInviteModal: React.FC<CollabInviteModalProps> = ({
                                         value={inviteEmail}
                                         onChange={(e) => {
                                             setInviteEmail(e.target.value);
+                                            setSelectedTeacher(null); // clear selection when typing manually
                                             setShowSuggestions(true);
                                         }}
                                         onFocus={() => setShowSuggestions(true)}
@@ -397,7 +402,11 @@ const CollabInviteModal: React.FC<CollabInviteModalProps> = ({
                                                     key={teacher.id}
                                                     type="button"
                                                     onClick={() => {
-                                                        setInviteEmail(teacher.email || '');
+                                                        // Show the teacher's full name in the input field
+                                                        const displayName = `${teacher.firstName || ''} ${teacher.lastName || ''}`.trim() || teacher.email || '';
+                                                        setInviteEmail(displayName);
+                                                        // Keep the full teacher object so handleInviteEmail can use their email
+                                                        setSelectedTeacher(teacher);
                                                         setShowSuggestions(false);
                                                     }}
                                                     className="w-full text-left px-4 py-3 hover:bg-blue-50 dark:hover:bg-blue-900/20 flex items-center gap-3 transition-colors border-b border-gray-50 dark:border-gray-700 last:border-0"
