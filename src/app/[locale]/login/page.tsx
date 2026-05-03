@@ -36,6 +36,17 @@ const SigninPage = () => {
   const router = useRouter();
   const { login, user, isAuthenticated } = useAuth();
 
+  // Afficher l'erreur OAuth renvoyée par le backend via ?error=...
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const oauthError = params.get('error');
+    if (oauthError) {
+      toast.error(decodeURIComponent(oauthError.replace(/\+/g, ' ')));
+      // Nettoyer l'URL sans recharger la page
+      window.history.replaceState({}, '', window.location.pathname);
+    }
+  }, []);
+
   useEffect(() => {
     if (isAuthenticated) {
       const params = new URLSearchParams(window.location.search);
@@ -86,9 +97,9 @@ const SigninPage = () => {
     }
   }, [formData, login, t, validateForm]);
 
+  // Simple redirect vers le backend — Spring Security gère tout le flow OAuth2
   const handleOAuth = useCallback((provider: 'google' | 'github') => {
-    const redirectUri = encodeURIComponent(`${window.location.origin}/fr/auth/callback`);
-    window.location.href = `${API_BASE}/oauth2/authorization/${provider}?redirect_uri=${redirectUri}`;
+    window.location.href = `${API_BASE}/oauth2/authorization/${provider}`;
   }, []);
 
   const renderForm = useMemo(() => (

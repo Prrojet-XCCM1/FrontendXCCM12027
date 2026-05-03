@@ -42,7 +42,7 @@ export default function ResetPasswordPage() {
         }
         setIsSubmitting(true);
         try {
-            await AuthControllerService.resetPassword({ token, newPassword: password } as any);
+            await AuthControllerService.resetPassword({ token, newPassword: password, confirmPassword: confirm } as any);
             setDone(true);
             toast.success('Mot de passe réinitialisé !');
             setTimeout(() => router.push('/login'), 2500);

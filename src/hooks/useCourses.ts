@@ -2,7 +2,6 @@
 'use client';
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { CourseControllerService, CourseInteractionControllerService } from '@/lib';
-import { LikeService } from '@/lib/services/LikeService';
 
 export interface Course {
     image: any;
@@ -52,14 +51,14 @@ export function useCourses(): UseCoursesReturn {
     const [error, setError] = useState<string | null>(null);
     const [localLikes, setLocalLikes] = useState<Set<number>>(new Set());
 
-    // Ref pour éviter de re-créer fetchAllCourses à chaque changement de like
+    // Ref stable → fetchAllCourses ne se recrée pas à chaque like (plus de re-fetch en cascade)
     const localLikesRef = useRef<Set<number>>(new Set());
 
     const saveLikes = useCallback((likes: Set<number>) => {
         localStorage.setItem('likedCourses', JSON.stringify(Array.from(likes)));
     }, []);
 
-    // Charger les likes depuis localStorage au démarrage
+    // Charger likes depuis localStorage au démarrage
     useEffect(() => {
         const savedLikes = localStorage.getItem('likedCourses');
         if (savedLikes) {
@@ -68,13 +67,13 @@ export function useCourses(): UseCoursesReturn {
                 const newSet = new Set(likedIds);
                 setLocalLikes(newSet);
                 localLikesRef.current = newSet;
-            } catch (error) {
-                console.error('Erreur lors du chargement des likes:', error);
+            } catch {
+                // localStorage corrompu → ignorer
             }
         }
     }, []);
 
-    // Synchroniser le ref ET mettre à jour isLiked sur les courses sans re-fetch
+    // Sync ref + update isLiked sur les courses sans déclencher de re-fetch
     useEffect(() => {
         localLikesRef.current = localLikes;
         setCourses(prev => prev.map(course => ({
@@ -87,39 +86,37 @@ export function useCourses(): UseCoursesReturn {
         return localLikesRef.current.has(courseId);
     }, []);
 
-    // fetchAllCourses ne dépend plus de isLiked → pas de re-fetch sur like
+    // fetchAllCourses sans dépendance sur isLiked → stable, s'exécute une seule fois
     const fetchAllCourses = useCallback(async () => {
         try {
             setLoading(true);
             setError(null);
-
             const response: any = await CourseControllerService.getAllCourses();
-
             if (response && response.success && Array.isArray(response.data)) {
                 const coursesData = response.data as Course[];
-                const coursesWithLikes = coursesData.map(course => ({
+                setCourses(coursesData.map(course => ({
                     ...course,
                     isLiked: localLikesRef.current.has(course.id),
-                }));
-                setCourses(coursesWithLikes);
+                })));
             } else {
                 setCourses([]);
             }
         } catch (err) {
-            console.error('❌ Erreur lors du chargement des cours:', err);
+            console.error('❌ Erreur chargement cours:', err);
             setError(err instanceof Error ? err.message : 'Impossible de charger les cours');
             setCourses([]);
         } finally {
             setLoading(false);
         }
-    }, []); // Pas de dépendance sur isLiked → stable
+    }, []); // Dépendances vides → ne se recrée jamais
 
     /**
-     * Liker un cours — appelle POST /api/v1/likes
-     * Mise à jour optimiste immédiate, sync depuis réponse API
+     * Like un cours.
+     * Appelle POST /api/courses/{id}/interactions/like (toggle backend).
+     * Mise à jour optimiste + sync depuis la réponse API pour avoir le vrai état.
      */
     const incrementLike = useCallback(async (courseId: number) => {
-        if (localLikesRef.current.has(courseId)) return;
+        if (localLikesRef.current.has(courseId)) return; // déjà liké
 
         // Optimistic update
         setLocalLikes(prev => {
@@ -128,22 +125,20 @@ export function useCourses(): UseCoursesReturn {
             saveLikes(newSet);
             return newSet;
         });
-        setCourses(prev => prev.map(course =>
-            course.id === courseId
-                ? { ...course, likeCount: (course.likeCount || 0) + 1, isLiked: true }
-                : course
+        setCourses(prev => prev.map(c =>
+            c.id === courseId ? { ...c, likeCount: (c.likeCount || 0) + 1, isLiked: true } : c
         ));
 
         try {
-            const response = await LikeService.addLike('COURSE', courseId);
-            // Sync avec la vraie valeur backend
-            if (response?.data) {
-                setCourses(prev => prev.map(course =>
-                    course.id === courseId
-                        ? { ...course, likeCount: response.data!.likeCount, isLiked: response.data!.liked }
-                        : course
+            const response: any = await CourseInteractionControllerService.toggleLike(courseId);
+            // Sync depuis la réponse backend (source de vérité)
+            const data = response?.data;
+            if (data) {
+                setCourses(prev => prev.map(c =>
+                    c.id === courseId ? { ...c, likeCount: data.likeCount, isLiked: data.liked } : c
                 ));
-                if (!response.data.liked) {
+                if (!data.liked) {
+                    // Le backend a toggleé dans le mauvais sens (état désynchronisé) → corriger localStorage
                     setLocalLikes(prev => {
                         const newSet = new Set(prev);
                         newSet.delete(courseId);
@@ -153,7 +148,6 @@ export function useCourses(): UseCoursesReturn {
                 }
             }
         } catch (err) {
-            console.error(`❌ Erreur like cours ${courseId}:`, err);
             // Rollback
             setLocalLikes(prev => {
                 const newSet = new Set(prev);
@@ -161,17 +155,16 @@ export function useCourses(): UseCoursesReturn {
                 saveLikes(newSet);
                 return newSet;
             });
-            setCourses(prev => prev.map(course =>
-                course.id === courseId
-                    ? { ...course, likeCount: Math.max(0, (course.likeCount || 0) - 1), isLiked: false }
-                    : course
+            setCourses(prev => prev.map(c =>
+                c.id === courseId ? { ...c, likeCount: Math.max(0, (c.likeCount || 0) - 1), isLiked: false } : c
             ));
             throw err;
         }
     }, [saveLikes]);
 
     /**
-     * Unliker un cours — appelle DELETE /api/v1/likes/COURSE/{id}
+     * Unlike un cours.
+     * Appelle POST /api/courses/{id}/interactions/like (même toggle backend).
      */
     const decrementLike = useCallback(async (courseId: number) => {
         // Optimistic update
@@ -181,23 +174,28 @@ export function useCourses(): UseCoursesReturn {
             saveLikes(newSet);
             return newSet;
         });
-        setCourses(prev => prev.map(course =>
-            course.id === courseId
-                ? { ...course, likeCount: Math.max(0, (course.likeCount || 0) - 1), isLiked: false }
-                : course
+        setCourses(prev => prev.map(c =>
+            c.id === courseId ? { ...c, likeCount: Math.max(0, (c.likeCount || 0) - 1), isLiked: false } : c
         ));
 
         try {
-            const response = await LikeService.removeLike('COURSE', courseId);
-            if (response?.data) {
-                setCourses(prev => prev.map(course =>
-                    course.id === courseId
-                        ? { ...course, likeCount: response.data!.likeCount, isLiked: response.data!.liked }
-                        : course
+            const response: any = await CourseInteractionControllerService.toggleLike(courseId);
+            const data = response?.data;
+            if (data) {
+                setCourses(prev => prev.map(c =>
+                    c.id === courseId ? { ...c, likeCount: data.likeCount, isLiked: data.liked } : c
                 ));
+                if (data.liked) {
+                    // Désync : le backend a re-liké → corriger localStorage
+                    setLocalLikes(prev => {
+                        const newSet = new Set(prev);
+                        newSet.add(courseId);
+                        saveLikes(newSet);
+                        return newSet;
+                    });
+                }
             }
         } catch (err) {
-            console.error(`❌ Erreur unlike cours ${courseId}:`, err);
             // Rollback
             setLocalLikes(prev => {
                 const newSet = new Set(prev);
@@ -205,20 +203,17 @@ export function useCourses(): UseCoursesReturn {
                 saveLikes(newSet);
                 return newSet;
             });
-            setCourses(prev => prev.map(course =>
-                course.id === courseId
-                    ? { ...course, likeCount: (course.likeCount || 0) + 1, isLiked: true }
-                    : course
+            setCourses(prev => prev.map(c =>
+                c.id === courseId ? { ...c, likeCount: (c.likeCount || 0) + 1, isLiked: true } : c
             ));
         }
     }, [saveLikes]);
 
     /**
-     * Toggle like/unlike — détermine l'action correcte selon l'état actuel
+     * Toggle like/unlike — choisit l'action selon l'état réel (localLikesRef)
      */
     const toggleLike = useCallback(async (courseId: number) => {
-        const currentlyLiked = localLikesRef.current.has(courseId);
-        if (currentlyLiked) {
+        if (localLikesRef.current.has(courseId)) {
             await decrementLike(courseId);
         } else {
             await incrementLike(courseId);
@@ -229,10 +224,7 @@ export function useCourses(): UseCoursesReturn {
         try {
             const response: any = await CourseControllerService.getEnrichedCourse(courseId);
             if (response && response.success && response.data) {
-                return {
-                    ...response.data as Course,
-                    isLiked: localLikesRef.current.has(courseId),
-                };
+                return { ...response.data as Course, isLiked: localLikesRef.current.has(courseId) };
             }
             return null;
         } catch (err) {
@@ -244,12 +236,9 @@ export function useCourses(): UseCoursesReturn {
     const incrementView = useCallback(async (courseId: number) => {
         const viewedKey = `viewed_${courseId}`;
         if (sessionStorage.getItem(viewedKey)) return;
-
         try {
-            setCourses(prev => prev.map(course =>
-                course.id === courseId
-                    ? { ...course, viewCount: (course.viewCount || 0) + 1 }
-                    : course
+            setCourses(prev => prev.map(c =>
+                c.id === courseId ? { ...c, viewCount: (c.viewCount || 0) + 1 } : c
             ));
             await CourseInteractionControllerService.recordView(courseId);
             sessionStorage.setItem(viewedKey, 'true');
@@ -260,10 +249,8 @@ export function useCourses(): UseCoursesReturn {
 
     const incrementDownload = useCallback(async (courseId: number) => {
         try {
-            setCourses(prev => prev.map(course =>
-                course.id === courseId
-                    ? { ...course, downloadCount: (course.downloadCount || 0) + 1 }
-                    : course
+            setCourses(prev => prev.map(c =>
+                c.id === courseId ? { ...c, downloadCount: (c.downloadCount || 0) + 1 } : c
             ));
             await CourseControllerService.incrementDownloadCount(courseId);
         } catch (err) {
@@ -281,18 +268,10 @@ export function useCourses(): UseCoursesReturn {
     }, [fetchAllCourses]);
 
     return {
-        courses,
-        loading,
-        error,
-        fetchAllCourses,
-        fetchCourse,
-        refetch,
-        incrementView,
-        toggleLike,
-        incrementLike,
-        decrementLike,
-        incrementDownload,
-        isLiked,
+        courses, loading, error,
+        fetchAllCourses, fetchCourse, refetch,
+        incrementView, toggleLike, incrementLike, decrementLike,
+        incrementDownload, isLiked,
     };
 }
 
@@ -304,31 +283,22 @@ export function useCourse(courseId: number) {
     const [error, setError] = useState<string | null>(null);
 
     const { isAuthenticated, loading: authLoading } = useAuth();
-    const {
-        toggleLike: globalToggleLike,
-        incrementDownload: globalIncrementDownload,
-        isLiked: globalIsLiked,
-    } = useCourses();
+    const { toggleLike: globalToggleLike, incrementDownload: globalIncrementDownload, isLiked: globalIsLiked } = useCourses();
 
     useEffect(() => {
         if (authLoading) return;
-        if (!isAuthenticated) {
-            setLoading(false);
-            return;
-        }
+        if (!isAuthenticated) { setLoading(false); return; }
 
         const loadCourse = async () => {
             try {
                 setLoading(true);
                 setError(null);
-
                 const enrichedResponse: any = await CourseControllerService.getEnrichedCourse(courseId);
                 const allResponse: any = await CourseControllerService.getAllCourses();
 
-                if (enrichedResponse && enrichedResponse.success && enrichedResponse.data) {
+                if (enrichedResponse?.success && enrichedResponse.data) {
                     const enrichedData = enrichedResponse.data;
                     const fullCourse = allResponse?.data?.find((c: any) => String(c.id) === String(courseId));
-
                     setCourse({
                         ...enrichedData,
                         content: fullCourse?.content || enrichedData.content,
@@ -339,52 +309,37 @@ export function useCourse(courseId: number) {
                     } as Course);
                 }
             } catch (err) {
-                console.error(`❌ Erreur chargement cours ${courseId}:`, err);
                 setError(err instanceof Error ? err.message : 'Impossible de charger le cours');
             } finally {
                 setLoading(false);
             }
         };
 
-        const incrementView = async () => {
+        const recordView = async () => {
             const viewedKey = `viewed_${courseId}`;
             if (sessionStorage.getItem(viewedKey)) return;
             try {
                 await CourseInteractionControllerService.recordView(courseId);
                 sessionStorage.setItem(viewedKey, 'true');
                 setCourse(prev => prev ? { ...prev, viewCount: (prev.viewCount || 0) + 1 } : prev);
-            } catch (err) {
-                console.error(`❌ Erreur vue cours ${courseId}:`, err);
-            }
+            } catch { /* silencieux */ }
         };
 
-        if (courseId) {
-            loadCourse();
-            incrementView();
-        }
+        if (courseId) { loadCourse(); recordView(); }
     }, [courseId, authLoading, isAuthenticated]);
 
     const toggleLike = async (id: number) => {
         const currentlyLiked = course?.isLiked;
-        // Optimistic update local
         setCourse(prev => prev && String(prev.id) === String(id)
-            ? {
-                ...prev,
-                likeCount: currentlyLiked ? Math.max(0, (prev.likeCount || 0) - 1) : (prev.likeCount || 0) + 1,
-                isLiked: !currentlyLiked,
-            }
+            ? { ...prev, likeCount: currentlyLiked ? Math.max(0, (prev.likeCount || 0) - 1) : (prev.likeCount || 0) + 1, isLiked: !currentlyLiked }
             : prev
         );
         try {
             await globalToggleLike(id);
-        } catch (err) {
+        } catch {
             // Rollback
             setCourse(prev => prev && String(prev.id) === String(id)
-                ? {
-                    ...prev,
-                    likeCount: currentlyLiked ? (prev.likeCount || 0) + 1 : Math.max(0, (prev.likeCount || 0) - 1),
-                    isLiked: currentlyLiked,
-                }
+                ? { ...prev, likeCount: currentlyLiked ? (prev.likeCount || 0) + 1 : Math.max(0, (prev.likeCount || 0) - 1), isLiked: currentlyLiked }
                 : prev
             );
         }
@@ -393,20 +348,11 @@ export function useCourse(courseId: number) {
     const incrementDownload = async (id: number) => {
         try {
             setCourse(prev => prev && String(prev.id) === String(id)
-                ? { ...prev, downloadCount: (prev.downloadCount || 0) + 1 }
-                : prev
+                ? { ...prev, downloadCount: (prev.downloadCount || 0) + 1 } : prev
             );
             await globalIncrementDownload(id);
-        } catch (err) {
-            console.error('Error incrementing download:', err);
-        }
+        } catch { /* silencieux */ }
     };
 
-    return {
-        course,
-        loading: loading || authLoading,
-        error,
-        toggleLike,
-        incrementDownload,
-    };
+    return { course, loading: loading || authLoading, error, toggleLike, incrementDownload };
 }
