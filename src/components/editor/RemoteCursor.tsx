@@ -1,6 +1,5 @@
 'use client';
 
-import React from 'react';
 
 interface RemoteCursorProps {
     userId: string;
@@ -14,13 +13,13 @@ export default function RemoteCursor({ userName, x, y, color }: RemoteCursorProp
     return (
         <div
             style={{
-                position: 'absolute', // Absolute permet au curseur de défiler avec la page
+                position: 'fixed', // Fixed = coordonnées viewport, stable même avec scroll
                 left: 0,
                 top: 0,
                 transform: `translate(${x}px, ${y}px)`,
-                zIndex: 50, // Juste au-dessus du texte
+                zIndex: 9999,
                 pointerEvents: 'none',
-                transition: 'transform 100ms ease-out', // Smooth transition for typing/moving
+                transition: 'transform 80ms linear',
                 willChange: 'transform'
             }}
             className="flex flex-col items-start"

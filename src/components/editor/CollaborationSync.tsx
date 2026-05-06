@@ -8,6 +8,15 @@ import { Editor } from '@tiptap/react';
 import RemoteCursor from './RemoteCursor';
 import throttle from 'lodash.throttle';
 
+// Convertit un nodeId string en nombre stable pour l'API backend (Long)
+function hashNodeId(nodeId: string): number {
+    let h = 5381;
+    for (let i = 0; i < nodeId.length; i++) {
+        h = Math.imul(h, 33) ^ nodeId.charCodeAt(i);
+    }
+    return Math.abs(h >>> 0); // toujours positif, 32 bits
+}
+
 interface CollaborationSyncProps {
     editorRef: React.MutableRefObject<MainEditorRef | null>;
     editorInstance?: Editor | null;
@@ -88,10 +97,12 @@ export default function CollaborationSync({ editorRef, editorInstance }: Collabo
                         });
                     }
                 } else if (type === 'LOCK') {
+                    // Utiliser lockInfo.nodeId (payload) comme clé — granuleId est un Long backend
+                    const lockKey = lockInfo.nodeId || String(action.granuleId);
                     setLockedNodes(prev => {
                         const newMap = new Map(prev);
-                        newMap.set(String(action.granuleId), {
-                            nodeId: String(action.granuleId),
+                        newMap.set(lockKey, {
+                            nodeId: lockKey,
                             authorId: lockInfo.authorId || action.authorId,
                             userName: lockInfo.userName || 'Un collaborateur',
                             color: lockInfo.color || '#A855F7'
@@ -99,20 +110,40 @@ export default function CollaborationSync({ editorRef, editorInstance }: Collabo
                         return newMap;
                     });
                 } else if (type === 'UNLOCK') {
+                    const lockKey = lockInfo.nodeId || String(action.granuleId);
                     setLockedNodes(prev => {
                         const newMap = new Map(prev);
-                        newMap.delete(String(action.granuleId));
+                        newMap.delete(lockKey);
                         return newMap;
                     });
 
-                    // Mise à jour du contenu si fourni lors du unlock
-                    if (action.content && editor) {
-                        let jsonContent = action.content;
-                        if (typeof action.content === 'string') {
-                            try { jsonContent = JSON.parse(action.content); } catch { }
+                    // Appliquer le contenu du bloc de façon chirurgicale (même logique que BLOCK_UPDATE)
+                    // Évite d'écraser tout le document avec setContent()
+                    if (action.content && lockInfo.nodeId && editor) {
+                        let blockJson;
+                        try { blockJson = JSON.parse(action.content); } catch { return; }
+
+                        let targetPos = -1;
+                        let targetNodeSize = 0;
+                        editor.state.doc.descendants((node, pos) => {
+                            if (node.attrs && node.attrs.id === lockInfo.nodeId) {
+                                targetPos = pos;
+                                targetNodeSize = node.nodeSize;
+                                return false;
+                            }
+                        });
+
+                        if (targetPos !== -1) {
+                            const { tr, schema } = editor.state;
+                            try {
+                                const newNode = schema.nodeFromJSON(blockJson);
+                                tr.replaceWith(targetPos, targetPos + targetNodeSize, newNode);
+                                tr.setMeta('isRemote', true);
+                                editor.view.dispatch(tr);
+                            } catch (e) {
+                                console.error('Erreur remplacement bloc (UNLOCK):', e);
+                            }
                         }
-                        editor.commands.setContent(jsonContent, false);
-                        editor.view.dispatch(editor.state.tr.setMeta('isRemote', true));
                     }
                 } else if (type === 'CURSOR') {
                     const cursorInfo = action.payload || {};
@@ -152,8 +183,9 @@ export default function CollaborationSync({ editorRef, editorInstance }: Collabo
                         payload: {
                             authorId: user?.id || sessionId.current,
                             userName: user?.firstName || user?.email?.split('@')[0] || 'Anonyme',
-                            x: e.clientX + window.scrollX,
-                            y: e.clientY + window.scrollY,
+                            // Coordonnées viewport (clientX/Y) — correspond à position:fixed dans RemoteCursor
+                            x: e.clientX,
+                            y: e.clientY,
                             color: myColor
                         }
                     })
@@ -199,8 +231,11 @@ export default function CollaborationSync({ editorRef, editorInstance }: Collabo
                             destination: `/app/projet/${courseId}/action`,
                             body: JSON.stringify({
                                 type: 'UNLOCK',
-                                granuleId: parseInt(lastLockedNodeId) || 0,
-                                payload: { authorId: user?.id }
+                                granuleId: hashNodeId(lastLockedNodeId), // hash stable → Long backend
+                                payload: {
+                                    authorId: user?.id,
+                                    nodeId: lastLockedNodeId            // identifiant string du nœud
+                                }
                             })
                         });
                     }
@@ -209,9 +244,10 @@ export default function CollaborationSync({ editorRef, editorInstance }: Collabo
                             destination: `/app/projet/${courseId}/action`,
                             body: JSON.stringify({
                                 type: 'LOCK',
-                                granuleId: parseInt(currentNodeId) || 0,
+                                granuleId: hashNodeId(currentNodeId),   // hash stable → Long backend
                                 payload: {
                                     authorId: user?.id,
+                                    nodeId: currentNodeId,              // identifiant string du nœud
                                     userName: user?.firstName || user?.email || 'Anonyme',
                                     color: myColor
                                 }
@@ -235,8 +271,8 @@ export default function CollaborationSync({ editorRef, editorInstance }: Collabo
                         destination: `/app/projet/${courseId}/action`,
                         body: JSON.stringify({
                             type: 'UNLOCK',
-                            granuleId: parseInt(lastLockedNodeId) || 0,
-                            payload: { authorId: user?.id }
+                            granuleId: hashNodeId(lastLockedNodeId),
+                            payload: { authorId: user?.id, nodeId: lastLockedNodeId }
                         })
                     });
                 } catch { }
@@ -270,7 +306,7 @@ export default function CollaborationSync({ editorRef, editorInstance }: Collabo
                         destination: `/app/projet/${courseId}/action`,
                         body: JSON.stringify({
                             type: 'BLOCK_UPDATE',
-                            granuleId: parseInt(currentBlockNode.attrs.id) || 0,
+                            granuleId: hashNodeId(currentBlockNode.attrs.id),
                             content: JSON.stringify(currentBlockNode.toJSON()),
                             payload: {
                                 authorId: user?.id || sessionId.current,
