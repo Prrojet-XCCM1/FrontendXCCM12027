@@ -30,18 +30,14 @@ export default function CollaborationSync({ editorRef, editorInstance }: Collabo
     const [remoteCursors, setRemoteCursors] = useState<Map<string, any>>(new Map());
 
     const sessionId = useRef(`anon-${Math.random().toString(36).substr(2, 9)}`);
+    const lastLockedNodeIdRef = useRef<string | null>(null);
 
-    // ✅ FIX CRITIQUE : Ref vers l'instance de l'éditeur pour éviter le bug de closure.
-    // La subscription STOMP est créée une seule fois. Si editorInstance était null à ce moment,
-    // il resterait null pour toujours dans la closure. La ref est TOUJOURS à jour.
     const editorInstanceRef = useRef<Editor | null | undefined>(null);
     useEffect(() => {
         editorInstanceRef.current = editorInstance;
     }, [editorInstance]);
 
-    // ─── Subscription principale : reçoit TOUS les messages du projet ───────────
-    // ✅ FIX : Plus de garde sur editorRef?.current ni editorInstance dans les deps.
-    //    On utilise editorInstanceRef pour lire la dernière instance disponible.
+    // ─── Subscription principale ────────────────────────────────────────────────
     useEffect(() => {
         if (!isConnected || !stompClient || !courseId) return;
 
@@ -51,20 +47,19 @@ export default function CollaborationSync({ editorRef, editorInstance }: Collabo
 
                 // Ignorer ses propres actions
                 const myId = user?.id || sessionId.current;
-                if (action.payload?.authorId === myId || action.authorId === myId) return;
+                const authorId = action.payload?.authorId || action.authorId;
+                if (authorId === myId) return;
 
                 const type = action.type;
                 const lockInfo = action.payload || {};
-
-                // ✅ On lit toujours la ref qui pointe vers l'éditeur ACTUEL
                 const editor = editorInstanceRef.current;
 
                 if (type === 'BLOCK_UPDATE') {
-                    if (action.content && lockInfo.nodeId && editor) {
+                    const blockContent = action.content || lockInfo.content;
+                    if (blockContent && lockInfo.nodeId && editor) {
                         let blockJson;
-                        try { blockJson = JSON.parse(action.content); } catch { return; }
+                        try { blockJson = JSON.parse(blockContent); } catch { return; }
 
-                        // Chercher le nœud dans le document local
                         let targetPos = -1;
                         let targetNodeSize = 0;
 
@@ -72,21 +67,21 @@ export default function CollaborationSync({ editorRef, editorInstance }: Collabo
                             if (node.attrs && node.attrs.id === lockInfo.nodeId) {
                                 targetPos = pos;
                                 targetNodeSize = node.nodeSize;
-                                return false; // Arrêter la recherche
+                                return false;
                             }
                         });
 
-                        // Remplacement chirurgical via l'API ProseMirror
                         if (targetPos !== -1) {
-                            const { tr, schema } = editor.state;
                             try {
-                                const newNode = schema.nodeFromJSON(blockJson);
-                                tr.replaceWith(targetPos, targetPos + targetNodeSize, newNode);
-                                tr.setMeta('isRemote', true); // Évite la boucle infinie
-                                editor.view.dispatch(tr);
-                            } catch (e) {
-                                console.error('Erreur remplacement de bloc:', e);
-                            }
+                                const newNode = editor.schema.nodeFromJSON(blockJson);
+                                editor.commands.command(({ tr, dispatch }) => {
+                                    if (dispatch) {
+                                        tr.replaceWith(targetPos, targetPos + targetNodeSize, newNode);
+                                        tr.setMeta('isRemote', true);
+                                    }
+                                    return true;
+                                });
+                            } catch (e) { console.error(e); }
                         }
                     }
                 } else if (type === 'MOVE') {
@@ -94,15 +89,33 @@ export default function CollaborationSync({ editorRef, editorInstance }: Collabo
                         editorRef.current.handleTOCAction('move', action.payload.itemId, {
                             targetId: action.payload.targetId,
                             position: action.payload.position
-                        });
+                        }, true);
+                    }
+                } else if (type === 'DELETE') {
+                    if (editorRef.current && action.nodeId) {
+                        editorRef.current.handleTOCAction('delete', action.nodeId, null, true);
+                    }
+                } else if (type === 'RENAME') {
+                    if (editorRef.current && action.nodeId && action.newTitle) {
+                        editorRef.current.handleTOCAction('rename', action.nodeId, action.newTitle, true);
+                    }
+                } else if (type === 'DUPLICATE') {
+                    if (editorRef.current && action.nodeId) {
+                        editorRef.current.handleTOCAction('duplicate', action.nodeId, null, true);
                     }
                 } else if (type === 'LOCK') {
                     // Utiliser lockInfo.nodeId (payload) comme clé — granuleId est un Long backend
                     const lockKey = lockInfo.nodeId || String(action.granuleId);
                     setLockedNodes(prev => {
                         const newMap = new Map(prev);
+<<<<<<< HEAD
                         newMap.set(lockKey, {
                             nodeId: lockKey,
+=======
+                        const idToLock = lockInfo.nodeId || String(action.granuleId);
+                        newMap.set(idToLock, {
+                            nodeId: idToLock,
+>>>>>>> invitatio
                             authorId: lockInfo.authorId || action.authorId,
                             userName: lockInfo.userName || 'Un collaborateur',
                             color: lockInfo.color || '#A855F7'
@@ -113,6 +126,7 @@ export default function CollaborationSync({ editorRef, editorInstance }: Collabo
                     const lockKey = lockInfo.nodeId || String(action.granuleId);
                     setLockedNodes(prev => {
                         const newMap = new Map(prev);
+<<<<<<< HEAD
                         newMap.delete(lockKey);
                         return newMap;
                     });
@@ -143,6 +157,16 @@ export default function CollaborationSync({ editorRef, editorInstance }: Collabo
                             } catch (e) {
                                 console.error('Erreur remplacement bloc (UNLOCK):', e);
                             }
+=======
+                        const idToUnlock = lockInfo.nodeId || String(action.granuleId);
+                        newMap.delete(idToUnlock);
+                        return newMap;
+                    });
+                    if (action.content && editor) {
+                        let jsonContent = action.content;
+                        if (typeof action.content === 'string') {
+                            try { jsonContent = JSON.parse(action.content); } catch { }
+>>>>>>> invitatio
                         }
                     }
                 } else if (type === 'CURSOR') {
@@ -155,26 +179,28 @@ export default function CollaborationSync({ editorRef, editorInstance }: Collabo
                         });
                     }
                 }
-            } catch (e) {
-                console.error('Erreur parsing message:', e);
-            }
+            } catch (e) { console.error(e); }
         });
 
-        return () => {
-            subMain.unsubscribe();
-        };
-    // ✅ editorInstance RETIRÉ des dépendances — on utilise la ref à la place.
-    // Évite de recréer la subscription à chaque changement d'état de l'éditeur.
+        return () => subMain.unsubscribe();
     }, [stompClient, isConnected, courseId, editorRef, user?.id]);
 
-    // ─── Diffuse la position du curseur souris (coordonnées absolues) ────────────
+    // ─── Souris ─────────────────────────────────────────────────────────────────
     useEffect(() => {
         if (!isConnected || !stompClient || !courseId) return;
-
         const colors = ['#8B5CF6', '#F59E0B', '#10B981', '#EF4444', '#3B82F6', '#EC4899'];
         const myColor = colors[Math.abs((user?.id || 'a').charCodeAt(0)) % colors.length];
 
         const handleMouseMove = throttle((e: MouseEvent) => {
+            const page = document.getElementById('xccm-editor-page');
+            if (!page) return;
+            const rect = page.getBoundingClientRect();
+            const style = window.getComputedStyle(page);
+            const matrix = new DOMMatrix(style.transform);
+            const scale = matrix.a || 1;
+            const x = (e.clientX - rect.left) / scale;
+            const y = (e.clientY - rect.top) / scale;
+
             try {
                 stompClient.publish({
                     destination: `/app/projet/${courseId}/action`,
@@ -183,10 +209,14 @@ export default function CollaborationSync({ editorRef, editorInstance }: Collabo
                         payload: {
                             authorId: user?.id || sessionId.current,
                             userName: user?.firstName || user?.email?.split('@')[0] || 'Anonyme',
+<<<<<<< HEAD
                             // Coordonnées viewport (clientX/Y) — correspond à position:fixed dans RemoteCursor
                             x: e.clientX,
                             y: e.clientY,
                             color: myColor
+=======
+                            x, y, color: myColor
+>>>>>>> invitatio
                         }
                     })
                 });
@@ -200,29 +230,24 @@ export default function CollaborationSync({ editorRef, editorInstance }: Collabo
         };
     }, [stompClient, isConnected, courseId, user]);
 
-    // ─── Envoie un LOCK/UNLOCK quand le curseur se déplace dans l'éditeur ────────
+    // ─── Verrouillage (Selection) ────────────────────────────────────────────────
     useEffect(() => {
         if (!editorInstance || !stompClient || !isConnected || !courseId) return;
-
         const colors = ['#8B5CF6', '#F59E0B', '#10B981', '#EF4444', '#3B82F6', '#EC4899'];
         const myColor = colors[Math.abs((user?.id || 'a').charCodeAt(0)) % colors.length];
 
-        let lastLockedNodeId: string | null = null;
-        let timer: NodeJS.Timeout | null = null;
-
         const handleSelectionUpdate = throttle(() => {
             const { selection } = editorInstance.state;
-            const { $anchor } = selection;
-
             let currentNodeId: string | null = null;
-            for (let depth = $anchor.depth; depth > 0; depth--) {
-                const node = $anchor.node(depth);
+            for (let depth = selection.$anchor.depth; depth > 0; depth--) {
+                const node = selection.$anchor.node(depth);
                 if (node && node.attrs && node.attrs.id) {
                     currentNodeId = node.attrs.id;
                     break;
                 }
             }
 
+<<<<<<< HEAD
             if (currentNodeId !== lastLockedNodeId) {
                 if (timer) clearTimeout(timer);
                 timer = setTimeout(() => {
@@ -267,12 +292,58 @@ export default function CollaborationSync({ editorRef, editorInstance }: Collabo
             if (timer) clearTimeout(timer);
             if (lastLockedNodeId && stompClient.active) {
                 try {
+=======
+            if (currentNodeId !== lastLockedNodeIdRef.current) {
+                const oldId = lastLockedNodeIdRef.current;
+                const myId = user?.id || sessionId.current;
+                if (oldId) {
+>>>>>>> invitatio
                     stompClient.publish({
                         destination: `/app/projet/${courseId}/action`,
                         body: JSON.stringify({
                             type: 'UNLOCK',
+<<<<<<< HEAD
                             granuleId: hashNodeId(lastLockedNodeId),
                             payload: { authorId: user?.id, nodeId: lastLockedNodeId }
+=======
+                            granuleId: 0,
+                            payload: { authorId: myId, nodeId: oldId }
+                        })
+                    });
+                }
+                if (currentNodeId) {
+                    stompClient.publish({
+                        destination: `/app/projet/${courseId}/action`,
+                        body: JSON.stringify({
+                            type: 'LOCK',
+                            granuleId: 0,
+                            payload: {
+                                authorId: myId,
+                                userName: user?.firstName || user?.email?.split('@')[0] || 'Anonyme',
+                                color: myColor,
+                                nodeId: currentNodeId
+                            }
+                        })
+                    });
+                }
+                lastLockedNodeIdRef.current = currentNodeId;
+            }
+        }, 150);
+
+        editorInstance.on('selectionUpdate', handleSelectionUpdate);
+        return () => {
+            editorInstance.off('selectionUpdate', handleSelectionUpdate);
+            handleSelectionUpdate.cancel();
+            if (lastLockedNodeIdRef.current && stompClient.active) {
+                try {
+                    const myId = user?.id || sessionId.current;
+                    stompClient.publish({
+                        destination: `/app/projet/${courseId}/action`,
+                        body: JSON.stringify({
+                            type: 'UNLOCK',
+                            granuleId: 0,
+                            payload: { authorId: myId, nodeId: lastLockedNodeIdRef.current }
+>>>>>>> invitatio
                         })
                     });
                 } catch { }
@@ -280,53 +351,114 @@ export default function CollaborationSync({ editorRef, editorInstance }: Collabo
         };
     }, [editorInstance, stompClient, isConnected, courseId, user]);
 
-    // ─── Diffuse le bloc en cours d'édition (throttle 300ms) ─────────────────────
+    // ─── Mise à jour du contenu et structure ─────────────────────────────────────
     useEffect(() => {
         if (!editorInstance || !stompClient || !isConnected || !courseId) return;
 
-        const handleUpdate = throttle(({ transaction }: { transaction: any }) => {
-            // Ne pas rediffuser les changements reçus de collaborateurs distants
+        const handleUpdate = throttle((props?: any) => {
+            const { transaction } = props || {};
             if (transaction?.getMeta('isRemote')) return;
+            const editor = editorInstanceRef.current;
+            if (!editor) return;
 
-            const { state } = editorInstance;
+            const { state } = editor;
             const { selection } = state;
 
             let currentBlockNode: any = null;
+            let parentBlockNode: any = null;
+            
             for (let depth = selection.$anchor.depth; depth > 0; depth--) {
                 const node = selection.$anchor.node(depth);
                 if (node && node.attrs && node.attrs.id) {
-                    currentBlockNode = node;
-                    break;
+                    if (!currentBlockNode) currentBlockNode = node;
+                    else { parentBlockNode = node; break; }
                 }
             }
 
-            if (currentBlockNode) {
+            const isStructural = transaction?.docChanged && (transaction.steps.some((step: any) => step.slice?.content?.childCount > 0) || transaction.steps.length > 1);
+            let targetNode = (isStructural && parentBlockNode) ? parentBlockNode : currentBlockNode;
+
+            // ✅ FALLBACK : Si on n'a pas de targetNode via la sélection (ex: focus dans un textarea de NodeView pour l'intro)
+            // on cherche quel nœud a été modifié par la transaction (attributs ou contenu)
+            if (!targetNode && transaction?.docChanged) {
+                transaction.steps.forEach((step: any) => {
+                    // Les steps peuvent avoir 'from' ou 'pos' selon leur type
+                    const pos = step.from !== undefined ? step.from : step.pos;
+                    if (pos !== undefined) {
+                        try {
+                            const $pos = state.doc.resolve(pos);
+                            for (let d = $pos.depth; d >= 0; d--) {
+                                const n = $pos.node(d);
+                                if (n?.attrs?.id) {
+                                    targetNode = n;
+                                    break;
+                                }
+                            }
+                        } catch (e) {}
+                    }
+                });
+            }
+
+            if (targetNode) {
+                const nodeJson = JSON.stringify(targetNode.toJSON());
                 try {
                     stompClient.publish({
                         destination: `/app/projet/${courseId}/action`,
                         body: JSON.stringify({
                             type: 'BLOCK_UPDATE',
+<<<<<<< HEAD
                             granuleId: hashNodeId(currentBlockNode.attrs.id),
                             content: JSON.stringify(currentBlockNode.toJSON()),
+=======
+                            granuleId: 0,
+                            content: nodeJson,
+>>>>>>> invitatio
                             payload: {
                                 authorId: user?.id || sessionId.current,
-                                nodeId: currentBlockNode.attrs.id
+                                nodeId: targetNode.attrs.id,
+                                content: nodeJson,
+                                isStructural
                             }
                         })
                     });
-                } catch { }
+                } catch (e) { console.error(e); }
             }
         }, 300);
 
-        editorInstance.on('update', handleUpdate);
+        editorInstance.on('update', ({ transaction }) => handleUpdate({ transaction }));
+
+        // Écouter les actions structurelles venant de MainEditor (TOC) pour les diffuser
+        const handleLocalAction = (e: Event) => {
+            const customEvent = e as CustomEvent;
+            const { type, nodeId, newTitle, payload } = customEvent.detail;
+            
+            try {
+                stompClient.publish({
+                    destination: `/app/projet/${courseId}/action`,
+                    body: JSON.stringify({
+                        type,
+                        nodeId,
+                        newTitle,
+                        payload: {
+                            ...payload,
+                            authorId: user?.id || sessionId.current
+                        }
+                    })
+                });
+            } catch (err) {
+                console.error('Erreur diffusion action locale:', err);
+            }
+        };
+
+        window.addEventListener('xccm:editor-action', handleLocalAction);
 
         return () => {
             handleUpdate.cancel();
             editorInstance.off('update', handleUpdate);
+            window.removeEventListener('xccm:editor-action', handleLocalAction);
         };
     }, [editorInstance, stompClient, isConnected, courseId, user]);
 
-    // ─── Styles CSS pour les blocs verrouillés ───────────────────────────────────
     const lockStyles = Array.from(lockedNodes.values()).map(lock => `
       [data-id="${lock.nodeId}"] {
           pointer-events: none !important;
@@ -349,7 +481,7 @@ export default function CollaborationSync({ editorRef, editorInstance }: Collabo
           z-index: 50;
           box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
       }
-  `).join('\n');
+    `).join('\n');
 
     return (
         <>
