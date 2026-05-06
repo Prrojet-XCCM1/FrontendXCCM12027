@@ -196,11 +196,15 @@ export default function CollaborationSync({ editorRef, editorInstance }: Collabo
                 const oldId = lastLockedNodeIdRef.current;
                 const myId = user?.id || sessionId.current;
                 if (oldId) {
+                    const editor = editorInstanceRef.current;
+                    const fullContent = editor ? JSON.stringify(editor.getJSON()) : null;
+
                     stompClient.publish({
                         destination: `/app/projet/${courseId}/action`,
                         body: JSON.stringify({
                             type: 'UNLOCK',
-                            granuleId: 0,
+                            granuleId: oldId,
+                            content: fullContent, // ✅ On envoie TOUT le document pour l'auto-save
                             payload: { authorId: myId, nodeId: oldId }
                         })
                     });
@@ -210,7 +214,7 @@ export default function CollaborationSync({ editorRef, editorInstance }: Collabo
                         destination: `/app/projet/${courseId}/action`,
                         body: JSON.stringify({
                             type: 'LOCK',
-                            granuleId: 0,
+                            granuleId: currentNodeId,
                             payload: {
                                 authorId: myId,
                                 userName: user?.firstName || user?.email?.split('@')[0] || 'Anonyme',
@@ -231,12 +235,17 @@ export default function CollaborationSync({ editorRef, editorInstance }: Collabo
             if (lastLockedNodeIdRef.current && stompClient.active) {
                 try {
                     const myId = user?.id || sessionId.current;
+                    const oldId = lastLockedNodeIdRef.current;
+                    const editor = editorInstanceRef.current;
+                    const fullContent = editor ? JSON.stringify(editor.getJSON()) : null;
+
                     stompClient.publish({
                         destination: `/app/projet/${courseId}/action`,
                         body: JSON.stringify({
                             type: 'UNLOCK',
-                            granuleId: 0,
-                            payload: { authorId: myId, nodeId: lastLockedNodeIdRef.current }
+                            granuleId: oldId,
+                            content: fullContent,
+                            payload: { authorId: myId, nodeId: oldId }
                         })
                     });
                 } catch { }
@@ -260,8 +269,12 @@ export default function CollaborationSync({ editorRef, editorInstance }: Collabo
             let currentBlockNode: any = null;
             let parentBlockNode: any = null;
             
-            for (let depth = selection.$anchor.depth; depth > 0; depth--) {
-                const node = selection.$anchor.node(depth);
+            // On cherche le bloc actuel avec une petite marge pour éviter le décalage i+1
+            const pos = selection.$from.pos;
+            const $pos = state.doc.resolve(pos);
+            
+            for (let depth = $pos.depth; depth > 0; depth--) {
+                const node = $pos.node(depth);
                 if (node && node.attrs && node.attrs.id) {
                     if (!currentBlockNode) currentBlockNode = node;
                     else { parentBlockNode = node; break; }
@@ -299,7 +312,7 @@ export default function CollaborationSync({ editorRef, editorInstance }: Collabo
                         destination: `/app/projet/${courseId}/action`,
                         body: JSON.stringify({
                             type: 'BLOCK_UPDATE',
-                            granuleId: 0,
+                            granuleId: targetNode.attrs.id,
                             content: nodeJson,
                             payload: {
                                 authorId: user?.id || sessionId.current,
