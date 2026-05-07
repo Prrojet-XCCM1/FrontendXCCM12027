@@ -13,6 +13,8 @@ import { useAuth } from '@/contexts/AuthContext';
 import { Notebook, Source, ChatMessage, StudioActivity } from '@/types/notebook';
 import { MindMapGraph } from '@/components/studio/MindMapGraph';
 import toast from 'react-hot-toast';
+import { getAuthToken } from '@/utils/authHelpers';
+
 
 // Interfaces are now imported from @/types/notebook
 
@@ -60,17 +62,17 @@ const NotebookWorkspace = ({ params }: { params: Promise<{ id: string, locale: s
   useEffect(() => {
     const loadNotebook = async () => {
       if (!user?.id) return;
-      
+
       if (id !== 'new') {
         try {
           // Since there's no getNotebookById in the generated service, we fetch all and find
           // (This is a fallback; in a real prod app, you'd add the endpoint to the service)
           const allNotebooks = await NotebookControllerService.getUserNotebooks(user.id);
           const saved = allNotebooks.find(nb => nb.id === id);
-          
+
           if (saved) {
             setTitle(saved.title || t_nb('untitled'));
-            
+
             // Parse metadata
             if (saved.metadata) {
               try {
@@ -81,7 +83,7 @@ const NotebookWorkspace = ({ params }: { params: Promise<{ id: string, locale: s
                 console.error("Error parsing notebook metadata", e);
               }
             }
-            
+
             // Load sources from API
             const apiSources = await NotebookControllerService.getNotebookSources(id);
             const mappedSources: Source[] = apiSources.map(as => ({
@@ -120,7 +122,7 @@ const NotebookWorkspace = ({ params }: { params: Promise<{ id: string, locale: s
             title,
             metadata: JSON.stringify({ chatHistory, studioActivities })
           });
-          
+
           if (response && response.id) {
             setCurrentId(response.id);
             router.replace(`/notebook/${response.id}`);
@@ -156,41 +158,55 @@ const NotebookWorkspace = ({ params }: { params: Promise<{ id: string, locale: s
 
     setChatHistory(prev => [...prev, newUserMessage]);
     setInputMessage('');
-    setSelectedActivity(null); 
+    setSelectedActivity(null);
 
     if (currentId === 'new') {
-        toast.error("Veuillez d'abord télécharger une source.");
-        return;
+      toast.error("Veuillez d'abord télécharger une source.");
+      return;
     }
 
     try {
-        const res = await fetch(`http://localhost:8000/api/v1/notebooks/chat`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ notebook_id: currentId, message: inputMessage })
-        });
-        
-        if (!res.ok) throw new Error("API Issue");
-        const data = await res.json();
-        
-        const aiResponse: ChatMessage = {
-            id: crypto.randomUUID(),
-            role: 'assistant',
-            content: data.answer || "Impossible de générer une réponse.",
-            timestamp: new Date().toISOString()
-        };
-        setChatHistory(prev => [...prev, aiResponse]);
-        
-        const newActivity: StudioActivity = {
-            id: crypto.randomUUID(),
-            type: 'chat',
-            title: 'Discussion avec l\'IA',
-            timestamp: new Date().toISOString()
-        };
-        setStudioActivities(prev => [newActivity, ...prev]);
-    } catch(err) {
-        console.error(err);
-        toast.error("Erreur de connexion à l'IA.");
+      const token = getAuthToken();
+      const baseUrl = process.env.NEXT_PUBLIC_API_BASE_URL || 'https://xccm1.duckdns.org';
+      const url = `${baseUrl}/api/v1/notebooks/chat`;
+      console.log('Fetching notebook chat from:', url);
+
+
+
+
+      
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': token ? `Bearer ${token}` : ''
+        },
+        body: JSON.stringify({ notebook_id: currentId, message: inputMessage })
+      });
+
+
+
+      if (!res.ok) throw new Error("API Issue");
+      const data = await res.json();
+
+      const aiResponse: ChatMessage = {
+        id: crypto.randomUUID(),
+        role: 'assistant',
+        content: data.answer || "Impossible de générer une réponse.",
+        timestamp: new Date().toISOString()
+      };
+      setChatHistory(prev => [...prev, aiResponse]);
+
+      const newActivity: StudioActivity = {
+        id: crypto.randomUUID(),
+        type: 'chat',
+        title: 'Discussion avec l\'IA',
+        timestamp: new Date().toISOString()
+      };
+      setStudioActivities(prev => [newActivity, ...prev]);
+    } catch (err) {
+      console.error(err);
+      toast.error("Erreur de connexion à l'IA.");
     }
   };
 
@@ -228,7 +244,7 @@ const NotebookWorkspace = ({ params }: { params: Promise<{ id: string, locale: s
     const uploadToast = toast.loading(`Envoi de ${files.length} source(s)...`);
     try {
       const newSources: Source[] = [];
-      
+
       for (const file of Array.from(files)) {
         // Envoi à l'API
         const apiSource = await NotebookControllerService.addSource(notebookId, {
@@ -236,7 +252,7 @@ const NotebookWorkspace = ({ params }: { params: Promise<{ id: string, locale: s
           type: file.name.split('.').pop() || 'pdf',
           contentText: "Contenu extrait..." // Normalement géré côté serveur ou par un parser client
         });
-        
+
         // Envoi au service d'indexation (Python) pour le RAG
         try {
           const formData = new FormData();
@@ -244,10 +260,23 @@ const NotebookWorkspace = ({ params }: { params: Promise<{ id: string, locale: s
           formData.append('source_id', apiSource.id || '');
           formData.append('file', file);
 
-          await fetch(`http://localhost:8000/api/v1/notebooks/index`, {
+          const token = getAuthToken();
+          const baseUrl = process.env.NEXT_PUBLIC_API_BASE_URL || 'https://xccm1.duckdns.org';
+          const url = `${baseUrl}/api/v1/notebooks/index`;
+          console.log('Indexing at:', url);
+          
+          await fetch(url, {
             method: 'POST',
+            headers: {
+              'Authorization': token ? `Bearer ${token}` : ''
+            },
             body: formData
           });
+
+
+
+
+
         } catch (indexErr) {
           console.error("Indexation failed for", file.name, indexErr);
         }
@@ -296,10 +325,20 @@ const NotebookWorkspace = ({ params }: { params: Promise<{ id: string, locale: s
     const toastId = toast.loading(`Génération de : ${label}... (Ceci peut prendre une minute)`);
     try {
       // Connect to LLM-SERVICE
-      const res = await fetch(`http://localhost:8000/api/v1/notebooks/studio/generate`, {
+      const token = getAuthToken();
+      const baseUrl = process.env.NEXT_PUBLIC_API_BASE_URL || 'https://xccm1.duckdns.org';
+      const url = `${baseUrl}/api/v1/notebooks/studio/generate`;
+      console.log('Fetching generation from:', url);
+
+
+
+
+
+      const res = await fetch(url, {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json'
+          'Content-Type': 'application/json',
+          'Authorization': token ? `Bearer ${token}` : ''
         },
         body: JSON.stringify({
           notebook_id: currentId,
@@ -308,19 +347,21 @@ const NotebookWorkspace = ({ params }: { params: Promise<{ id: string, locale: s
         })
       });
 
+
+
       if (!res.ok) {
         throw new Error("HTTP error " + res.status);
       }
 
       const data = await res.json();
-      
+
       let finalContent = "";
       if (data.payload) {
         finalContent = data.payload.markdown || data.payload.raw_text || JSON.stringify(data.payload, null, 2);
       } else {
         finalContent = data.content || JSON.stringify(data, null, 2);
       }
-      
+
       const newActivity: StudioActivity = {
         id: crypto.randomUUID(),
         type: toolId as any,
@@ -328,10 +369,10 @@ const NotebookWorkspace = ({ params }: { params: Promise<{ id: string, locale: s
         timestamp: new Date().toISOString(),
         payload: finalContent
       };
-      
+
       setStudioActivities(prev => [newActivity, ...prev]);
       toast.success(`${label} généré avec succès !`, { id: toastId });
-      
+
       // Auto-open the generated activity
       setSelectedActivity(newActivity);
     } catch (e) {
@@ -347,15 +388,15 @@ const NotebookWorkspace = ({ params }: { params: Promise<{ id: string, locale: s
       // On utilise getAllCourses au lieu de getEnrichedCourses car ce dernier renvoie une erreur 500
       const res = await CourseControllerService.getAllCourses();
       const allCourses = res.data || [];
-      
+
       // On récupère d'abord les cours créés par l'utilisateur
       let courses = allCourses.filter((c: any) => c.author?.id === user?.id);
-      
+
       try {
         // Obtenir la liste des inscriptions de l'utilisateur
         const enrollmentsRes = await EnrollmentControllerService.getMyEnrollments();
         const enrolledIds = (enrollmentsRes.data || []).map((e: any) => e.courseId);
-        
+
         // Ajouter les cours où l'utilisateur est inscrit
         const enrolledCourses = allCourses.filter((c: any) => enrolledIds.includes(c.id) && c.author?.id !== user?.id);
         courses = [...courses, ...enrolledCourses];
@@ -375,7 +416,7 @@ const NotebookWorkspace = ({ params }: { params: Promise<{ id: string, locale: s
 
   const handleAddCourseSource = async (course: any) => {
     if (!user?.id) return;
-    
+
     let notebookId = currentId;
     if (notebookId === 'new') {
       const loadingToast = toast.loading("Création du notebook...");
@@ -405,19 +446,19 @@ const NotebookWorkspace = ({ params }: { params: Promise<{ id: string, locale: s
         type: 'course',
         contentText: `Contenu du cours (${course.id}) intégré...` // Simulation du contenu extrait
       });
-      
+
       const newSource: Source = {
         id: apiSource.id || crypto.randomUUID(),
         name: apiSource.name || course.title,
         type: 'course',
         selected: true
       };
-      
+
       setSources(prev => [...prev, newSource]);
       toast.success(`Cours ajouté avec succès`, { id: uploadToast });
       setIsCourseModalOpen(false);
     } catch (error) {
-       toast.error("Erreur lors de l'ajout du cours", { id: uploadToast });
+      toast.error("Erreur lors de l'ajout du cours", { id: uploadToast });
     }
   };
 
@@ -462,12 +503,6 @@ const NotebookWorkspace = ({ params }: { params: Promise<{ id: string, locale: s
               placeholder={t_nb('searchSources')}
               className="w-full pl-9 pr-4 py-2 bg-gray-100 dark:bg-gray-800 border-none rounded-lg text-sm outline-none focus:ring-1 focus:ring-purple-500"
             />
-          </div>
-
-          <div className="flex bg-purple-50 dark:bg-purple-900/30 border border-purple-100 dark:border-purple-800/50 rounded-lg p-1">
-            <button className="flex-1 py-1.5 text-xs font-bold bg-white dark:bg-purple-700 text-purple-600 dark:text-white rounded shadow-sm">Web</button>
-            <button className="flex-1 py-1.5 text-xs font-semibold text-purple-400">Research</button>
-            <button className="p-1 px-2 text-purple-400"><FaChevronRight size={10} /></button>
           </div>
 
           <div className="pt-2">
@@ -566,11 +601,11 @@ const NotebookWorkspace = ({ params }: { params: Promise<{ id: string, locale: s
           <div className="max-w-3xl mx-auto space-y-8">
             {selectedActivity ? (
               <div className="bg-white dark:bg-gray-800 rounded-xl p-8 shadow-sm border border-purple-100 dark:border-purple-800/50 relative">
-                <button 
+                <button
                   onClick={() => setSelectedActivity(null)}
                   className="absolute right-4 top-4 text-purple-400 hover:text-purple-600 transition-colors p-2 bg-purple-50 dark:bg-purple-900/20 rounded-full"
                 >
-                  <FaChevronLeft size={12} className="inline mr-1"/> Fermer {selectedActivity.title}
+                  <FaChevronLeft size={12} className="inline mr-1" /> Fermer {selectedActivity.title}
                 </button>
                 <h2 className="text-2xl font-black text-gray-800 dark:text-gray-100 mb-6">{selectedActivity.title}</h2>
                 <div className="prose prose-purple dark:prose-invert max-w-none">
@@ -698,8 +733,8 @@ const NotebookWorkspace = ({ params }: { params: Promise<{ id: string, locale: s
                   key={tool.id}
                   onClick={() => hasSelectedSources && handleGenerateTool(tool.id, tool.label)}
                   className={`${tool.color} p-4 rounded-2xl transition-all border border-transparent transform ${hasSelectedSources
-                      ? 'cursor-pointer hover:shadow-xl hover:border-purple-400 dark:hover:border-purple-500 hover:-translate-y-1 active:scale-95 group'
-                      : 'opacity-40 grayscale cursor-not-allowed pointer-events-none shadow-none'
+                    ? 'cursor-pointer hover:shadow-xl hover:border-purple-400 dark:hover:border-purple-500 hover:-translate-y-1 active:scale-95 group'
+                    : 'opacity-40 grayscale cursor-not-allowed pointer-events-none shadow-none'
                     }`}
                 >
                   <div className="flex justify-between items-start mb-3">
@@ -722,8 +757,8 @@ const NotebookWorkspace = ({ params }: { params: Promise<{ id: string, locale: s
             ) : (
               <div className="space-y-3 pb-4">
                 {studioActivities.map((activity) => (
-                  <div 
-                    key={activity.id} 
+                  <div
+                    key={activity.id}
                     onClick={() => setSelectedActivity(activity)}
                     className="p-3 bg-purple-50/50 dark:bg-purple-900/10 border border-purple-100 dark:border-purple-800/50 rounded-xl flex items-center space-x-3 group hover:bg-white dark:hover:bg-gray-800 transition-all hover:shadow-sm animate-in fade-in slide-in-from-right-4 duration-300 cursor-pointer"
                   >
@@ -779,8 +814,8 @@ const NotebookWorkspace = ({ params }: { params: Promise<{ id: string, locale: s
               ) : (
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   {userCourses.map(course => (
-                    <div 
-                      key={course.id} 
+                    <div
+                      key={course.id}
                       onClick={() => handleAddCourseSource(course)}
                       className="bg-white dark:bg-gray-800 p-4 rounded-xl border border-purple-100 dark:border-purple-800/50 shadow-sm hover:shadow-md hover:border-purple-300 dark:hover:border-purple-600 cursor-pointer transition-all flex items-center space-x-3 group"
                     >
