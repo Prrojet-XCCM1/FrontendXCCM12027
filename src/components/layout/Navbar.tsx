@@ -56,24 +56,24 @@ const Navbar = () => {
   const { isEmbedded } = useEmbed();
 
   useEffect(() => {
-	  // 1. Mark as mounted
-	  setIsMounted(true);
+    // 1. Mark as mounted
+    setIsMounted(true);
 
-	  // 2. Load Dark Mode
-	  const savedTheme = localStorage.getItem('theme');
-	  const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-	  const dark = savedTheme === 'dark' || (!savedTheme && prefersDark);
-	  setIsDarkMode(dark);
-	  document.documentElement.classList.toggle('dark', dark);
+    // 2. Load Dark Mode
+    const savedTheme = localStorage.getItem('theme');
+    const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+    const dark = savedTheme === 'dark' || (!savedTheme && prefersDark);
+    setIsDarkMode(dark);
+    document.documentElement.classList.toggle('dark', dark);
 
-	  // 3. Load User Data
-	  const userData = localStorage.getItem('currentUser');
-	  if (userData) setCurrentUser(JSON.parse(userData));
+    // 3. Load User Data
+    const userData = localStorage.getItem('currentUser');
+    if (userData) setCurrentUser(JSON.parse(userData));
 
-	  // 4. Load Role
-	  const role = localStorage.getItem('userRole');
-	  if (role === 'student' || role === 'teacher') setUserRole(role);
-	}, []);
+    // 4. Load Role
+    const role = localStorage.getItem('userRole');
+    if (role === 'student' || role === 'teacher') setUserRole(role);
+  }, []);
 
   // Vérifier si un lien est actif
   const isActiveLink = (href: string) => {
@@ -306,6 +306,9 @@ const Navbar = () => {
                   <MdDashboard className="w-4 h-4" />
                   <span>{t('myAccount')}</span>
                 </button>
+
+                {/* COLLAB SLOT FOR EDITOR PAGE */}
+                <div id="navbar-collab-slot"></div>
 
                 {/* Bouton Déconnexion */}
                 <button
